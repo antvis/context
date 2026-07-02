@@ -1,0 +1,13 @@
+node_modules/
+coverage/
+dist/
+
+*.log
+.DS_Store
+.test-tmp
+.cache
+
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+pnpm-workspace.yaml

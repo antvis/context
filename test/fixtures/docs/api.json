@@ -1,0 +1,16 @@
+{
+  "name": "API Reference",
+  "version": "1.0.0",
+  "endpoints": [
+    {
+      "path": "/users",
+      "method": "GET",
+      "description": "List all users"
+    },
+    {
+      "path": "/users/:id",
+      "method": "GET",
+      "description": "Get user by ID"
+    }
+  ]
+}
