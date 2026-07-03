@@ -1,5 +1,4 @@
 import * as fs from 'fs/promises';
-import * as path from 'path';
 import { Loader } from './base';
 import { Document } from '../types';
 
@@ -12,8 +11,10 @@ export class JsonLoader implements Loader {
     const content = await fs.readFile(filePath, 'utf-8');
     const data = JSON.parse(content);
 
+    // ID is a temporary placeholder — Context.load() derives the canonical
+    // hash-based ID from the path relative to basePath (cross-machine consistency).
     return {
-      id: path.basename(filePath),
+      id: filePath,
       content: typeof data === 'string' ? data : JSON.stringify(data, null, 2),
     };
   }

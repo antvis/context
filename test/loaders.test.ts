@@ -10,9 +10,12 @@ describe('Loaders', () => {
   describe('MarkdownLoader', () => {
     it('should load markdown file with front-matter', async () => {
       const loader = new MarkdownLoader();
-      const doc = await loader.load(path.join(FIXTURES_DIR, 'getting-started.md'));
+      const filePath = path.join(FIXTURES_DIR, 'getting-started.md');
+      const doc = await loader.load(filePath);
 
-      expect(doc.id).toContain('getting-started.md');
+      // Loader returns the file path as a temporary ID — the canonical
+      // hash-based ID is assigned by Context.load() for cross-machine consistency.
+      expect(doc.id).toBe(filePath);
       expect(doc.content).toContain('Getting Started');
       expect(doc.content).toContain('npm install');
       expect(doc.meta).toEqual({
@@ -32,9 +35,10 @@ describe('Loaders', () => {
   describe('JsonLoader', () => {
     it('should load json file', async () => {
       const loader = new JsonLoader();
-      const doc = await loader.load(path.join(FIXTURES_DIR, 'api.json'));
+      const filePath = path.join(FIXTURES_DIR, 'api.json');
+      const doc = await loader.load(filePath);
 
-      expect(doc.id).toContain('api.json');
+      expect(doc.id).toBe(filePath);
       expect(doc.content).toContain('API Reference');
       expect(doc.content).toContain('/users');
     });
@@ -49,9 +53,10 @@ describe('Loaders', () => {
   describe('TextLoader', () => {
     it('should load text file', async () => {
       const loader = new TextLoader();
-      const doc = await loader.load(path.join(FIXTURES_DIR, 'notes.txt'));
+      const filePath = path.join(FIXTURES_DIR, 'notes.txt');
+      const doc = await loader.load(filePath);
 
-      expect(doc.id).toContain('notes.txt');
+      expect(doc.id).toBe(filePath);
       expect(doc.content).toContain('notes');
     });
 

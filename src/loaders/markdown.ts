@@ -1,5 +1,4 @@
 import * as fs from 'fs/promises';
-import * as path from 'path';
 import matter from 'gray-matter';
 import { Loader } from './base';
 import { Document } from '../types';
@@ -13,11 +12,10 @@ export class MarkdownLoader implements Loader {
     const content = await fs.readFile(filePath, 'utf-8');
     const { data: meta, content: body } = matter(content);
 
-    // 使用文件名作为 ID，避免路径中的特殊字符
-    const id = path.basename(filePath);
-
+    // ID is a temporary placeholder — Context.load() derives the canonical
+    // hash-based ID from the path relative to basePath (cross-machine consistency).
     return {
-      id,
+      id: filePath,
       content: body.trim(),
       meta,
     };

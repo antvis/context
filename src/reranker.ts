@@ -1,0 +1,223 @@
+/**
+ * Reranker — second-stage precision scoring for search results.
+ *
+ * The pipeline:
+ *   1. Coarse search (vector / hybrid) → topK × rerankFactor candidates
+ *   2. Reranker scores each candidate against the query
+ *   3. Final sort by reranked score → topK results
+ *
+ * This two-stage approach combines fast vector pre-filtering with a more
+ * expensive but more precise scoring model on the shortlist.
+ */
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+/** A candidate document for reranking. */
+export interface RerankCandidate {
+  id: string;
+  content: string;
+  /** Original score from the coarse search stage. */
+  score: number;
+  /** Heading path as a string (e.g. "Line Chart > Tooltip"). */
+  headingPath?: string;
+}
+
+/** A reranked result. */
+export interface RerankResult {
+  id: string;
+  /** Final score after reranking (higher is better). */
+  score: number;
+}
+
+/** Reranker interface — custom rerankers can implement this. */
+export interface Reranker {
+  rerank(query: string, candidates: RerankCandidate[]): Promise<RerankResult[]>;
+}
+
+/** Configuration for reranking. */
+export interface RerankOptions {
+  /**
+   * How many extra candidates to pull from the coarse search stage.
+   * e.g. with topK=5 and rerankFactor=3, 15 candidates are reranked.
+   * Default: 3
+   */
+  rerankFactor?: number;
+  /**
+   * Minimum number of candidates to rerank (floor).
+   * Default: 10
+   */
+  minCandidates?: number;
+}
+
+// ---------------------------------------------------------------------------
+// Defaults
+// ---------------------------------------------------------------------------
+
+const DEFAULT_RERANK_FACTOR = 3;
+const DEFAULT_MIN_CANDIDATES = 10;
+
+// ---------------------------------------------------------------------------
+// KeywordReranker — lexical overlap scoring
+// ---------------------------------------------------------------------------
+
+/**
+ * Reranker that scores candidates by keyword / phrase overlap with the query.
+ *
+ * This provides a complementary signal to vector similarity: the coarse
+ * embedding stage captures semantic closeness, while this reranker boosts
+ * candidates that contain the exact query terms (or their substrings).
+ *
+ * Scoring factors:
+ *   - Exact phrase match:    3.0× weight
+ *   - Whole term match:      1.0× weight (per term)
+ *   - Substring match:       0.3× weight (partial token overlap)
+ *   - Heading match:         2.0× bonus (terms appearing in heading path)
+ *   - Original score:        0.1× carry-over (respects the coarse rank)
+ *
+ * All scores are normalised to [0, 1] via min-max scaling.
+ */
+export class KeywordReranker implements Reranker {
+  async rerank(query: string, candidates: RerankCandidate[]): Promise<RerankResult[]> {
+    if (candidates.length === 0) return [];
+
+    const queryLower = query.toLowerCase();
+    const queryTerms = tokenizeQuery(queryLower);
+    const queryPhrase = queryLower.trim();
+
+    const scored = candidates.map((c) => {
+      const contentLower = c.content.toLowerCase();
+      let score = 0;
+
+      // 1. Exact phrase match — strongest signal
+      if (contentLower.includes(queryPhrase)) {
+        score += 3.0;
+        // Bonus for each additional occurrence
+        const phraseCount = countOccurrences(contentLower, queryPhrase);
+        score += (phraseCount - 1) * 0.5;
+      }
+
+      // 2. Per-term matching
+      for (const term of queryTerms) {
+        if (contentLower.includes(term)) {
+          // Whole word match
+          if (isWordBoundary(contentLower, term)) {
+            score += 1.0;
+            const termCount = countTermMatches(contentLower, term);
+            score += (termCount - 1) * 0.2;
+          } else {
+            // Substring match (e.g. "tool" matches "tooltip")
+            score += 0.3;
+          }
+        }
+      }
+
+      // 3. Heading path bonus — terms in section headings are more relevant
+      if (c.headingPath) {
+        const headingLower = c.headingPath.toLowerCase();
+        for (const term of queryTerms) {
+          if (headingLower.includes(term)) {
+            score += 2.0;
+          }
+        }
+        if (queryPhrase.length > 2 && headingLower.includes(queryPhrase)) {
+          score += 2.5;
+        }
+      }
+
+      // 4. Carry over a fraction of the original vector score
+      score += c.score * 0.1;
+
+      return { id: c.id, score };
+    });
+
+    // Min-max normalise to [0, 1]
+    const scores = scored.map((s) => s.score);
+    const min = Math.min(...scores);
+    const max = Math.max(...scores);
+    const range = max - min || 1;
+
+    return scored.map((s) => ({
+      id: s.id,
+      score: (s.score - min) / range,
+    }));
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Split a query into meaningful tokens. */
+function tokenizeQuery(query: string): string[] {
+  // Split on whitespace and CJK-friendly boundaries
+  const raw = query
+    .split(/[\s,，。.!！？?、：:；;]+/)
+    .filter(Boolean);
+
+  // For mixed CN/EN queries, also extract CJK bigrams as tokens
+  const tokens: string[] = [];
+  for (const r of raw) {
+    tokens.push(r);
+    // For CJK segments, add bigrams as additional tokens
+    if (/[一-鿿]{3,}/.test(r)) {
+      for (let i = 0; i + 2 <= r.length; i++) {
+        tokens.push(r.slice(i, i + 2));
+      }
+    }
+  }
+  return [...new Set(tokens)];
+}
+
+/** Count non-overlapping occurrences of a substring. */
+function countOccurrences(text: string, sub: string): number {
+  let count = 0;
+  let pos = 0;
+  while ((pos = text.indexOf(sub, pos)) !== -1) {
+    count++;
+    pos += sub.length;
+  }
+  return count;
+}
+
+/** Count whole-word matches of a term. */
+function countTermMatches(text: string, term: string): number {
+  let count = 0;
+  let pos = 0;
+  while ((pos = text.indexOf(term, pos)) !== -1) {
+    if (isWordBoundary(text, term, pos)) {
+      count++;
+    }
+    pos += term.length;
+  }
+  return count;
+}
+
+/** Check if a substring occurrence is at a word boundary. */
+function isWordBoundary(
+  text: string,
+  term: string,
+  pos?: number,
+): boolean {
+  const idx = pos ?? text.indexOf(term);
+  if (idx === -1) return false;
+  const before = idx === 0 || /[\s\n.,;:!?，。！？、：；"'(（【《\-_]/.test(text[idx - 1]);
+  const afterIdx = idx + term.length;
+  const after = afterIdx >= text.length || /[\s\n.,;:!?，。！？、：；"')）】》\-_]/.test(text[afterIdx]);
+  return before && after;
+}
+
+// ---------------------------------------------------------------------------
+// Factory
+// ---------------------------------------------------------------------------
+
+/**
+ * Create the default reranker.
+ *
+ * Currently returns KeywordReranker. In the future this may auto-select
+ * based on available models (cross-encoder, etc.).
+ */
+export function createReranker(): Reranker {
+  return new KeywordReranker();
+}
