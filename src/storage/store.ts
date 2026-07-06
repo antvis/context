@@ -214,8 +214,6 @@ export class Store {
 
   /**
    * Close and remove a single library's store from cache.
-   *
-   * Used by `Context.untrack()` and `Context.rebuild()`.
    */
   async close(library: string): Promise<void> {
     const store = this.stores.get(library);
@@ -227,9 +225,6 @@ export class Store {
 
   /**
    * Delete a library's store file from disk (after closing it).
-   *
-   * Used by `Context.rebuild()` to physically remove vector data before
-   * re-creating the store with fresh embeddings.
    */
   async deleteStore(library: string): Promise<void> {
     await this.close(library);

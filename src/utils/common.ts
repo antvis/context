@@ -1,5 +1,4 @@
 import * as crypto from 'crypto';
-import type { DocumentRegistry } from '../registry';
 
 // ---------------------------------------------------------------------------
 // JSON / meta helpers
@@ -15,37 +14,6 @@ export function safeParseMeta(metaStr: string | undefined): Record<string, unkno
   } catch {
     return undefined;
   }
-}
-
-// ---------------------------------------------------------------------------
-// Library name resolution
-// ---------------------------------------------------------------------------
-
-/**
- * Resolve library names from the query option.
- *
- * - '*' queries all loaded libraries.
- * - Array of names queries multiple specific libraries.
- * - Comma-separated string is supported for backward compatibility.
- * - Single string is the normal case.
- */
-export function resolveLibraries(
-  librarySpec: string | string[],
-  registry: DocumentRegistry,
-): string[] {
-  if (Array.isArray(librarySpec)) {
-    return librarySpec.filter(Boolean);
-  }
-
-  if (librarySpec === '*') {
-    return registry.getLibraryNames();
-  }
-
-  if (librarySpec.includes(',')) {
-    return librarySpec.split(',').map((s) => s.trim()).filter(Boolean);
-  }
-
-  return [librarySpec];
 }
 
 // ---------------------------------------------------------------------------

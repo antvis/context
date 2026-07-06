@@ -166,16 +166,9 @@ export interface ContextOptions {
  */
 export interface QueryOptions {
   /**
-   * Library name(s) to query.
-   *
-   * - Single library: `'g2'`
-   * - Multiple libraries: `['g2', 'f2']`
-   * - All libraries: `'*'`
-   *
-   * Comma-separated strings (`'g2,f2'`) are also supported for backward
-   * compatibility but the array form is preferred.
+   * Library name to query.
    */
-  library: string | string[];
+  library: string;
   /** Number of results to return */
   topK?: number;
   /**
@@ -234,20 +227,12 @@ export interface QueryResult {
   scoreMode?: 'vector' | 'hybrid' | 'reranked';
   /** Document metadata */
   meta?: Record<string, unknown>;
-  /**
-   * Original file path relative to `basePath` — allows users to trace
+  /** Original file path relative to `basePath` — allows users to trace
    * back to the source document for context review or navigation.
    *
    * Populated during `load()` and stored as a zvec field.
    */
   sourceFilePath?: string;
-  /**
-   * Which library this result came from.
-   *
-   * Useful when querying multiple libraries (`library: ['g2', 'f2']` or `'*'`)
-   * to identify the source of each result.
-   */
-  library?: string;
   /**
    * The embedder kind used to produce the vectors for this result's store.
    *

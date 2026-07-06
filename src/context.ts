@@ -1,7 +1,14 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import { glob } from 'glob';
-import { ContextOptions, QueryOptions, QueryResult, Document, LoadPhase, LoadProgress } from './types';
+import {
+  ContextOptions,
+  QueryOptions,
+  QueryResult,
+  Document,
+  LoadPhase,
+  LoadProgress,
+} from './types';
 import { resolveEmbedder } from './embedder';
 import type { Embedder, EmbedderInfo } from './embedder';
 import { Loader, MarkdownLoader, JsonLoader, TextLoader } from './loaders';
@@ -14,7 +21,6 @@ import {
   SynonymExpander,
   NoopExpander,
   safeParseMeta,
-  resolveLibraries,
   computeContentHash,
   selectSampleFiles,
 } from './utils';
@@ -43,18 +49,16 @@ export class Context {
     this._embedderInfo = embedderInfo;
     this.store = new Store(options.vectorsDir, embedder, options);
     this.registry = new DocumentRegistry();
-    this.loaders = [
-      new MarkdownLoader(),
-      new JsonLoader(),
-      new TextLoader(),
-    ];
+    this.loaders = [new MarkdownLoader(), new JsonLoader(), new TextLoader()];
     this.reranker = createReranker(options.rerankWeights);
-    this.queryExpander = options.queryExpansion === false
-      ? new NoopExpander()
-      : new SynonymExpander(
-          options.queryExpansion && typeof options.queryExpansion === 'object'
-            ? options.queryExpansion.synonyms : undefined
-        );
+    this.queryExpander =
+      options.queryExpansion === false
+        ? new NoopExpander()
+        : new SynonymExpander(
+            options.queryExpansion && typeof options.queryExpansion === 'object'
+              ? options.queryExpansion.synonyms
+              : undefined,
+          );
     this._onProgress = options.onProgress;
   }
 
@@ -76,7 +80,8 @@ export class Context {
     // files and loading them into the registry prevents duplicate
     // re-embedding of unchanged documents.
     if (fs.existsSync(options.vectorsDir)) {
-      const indexFiles = fs.readdirSync(options.vectorsDir)
+      const indexFiles = fs
+        .readdirSync(options.vectorsDir)
         .filter((f) => f.endsWith('.index.json'));
       for (const indexFile of indexFiles) {
         const library = indexFile.replace('.index.json', '');
@@ -85,26 +90,6 @@ export class Context {
     }
 
     return ctx;
-  }
-
-  /**
-   * Quick-start convenience method — creates a Context from a project directory.
-   *
-   * Auto-derives sensible defaults:
-   *   - basePath = dir (the project root)
-   *   - vectorsDir = dir/.context/vectors (hidden, won't pollute project)
-   *
-   * All other options can still be overridden via options.
-   */
-  static async fromDir(dir: string, options?: Partial<ContextOptions>): Promise<Context> {
-    const absoluteDir = path.resolve(dir);
-    const vectorsDir = options?.vectorsDir ?? path.join(absoluteDir, '.context', 'vectors');
-
-    return Context.create({
-      ...options,
-      basePath: options?.basePath ?? absoluteDir,
-      vectorsDir,
-    });
   }
 
   /**
@@ -145,7 +130,7 @@ export class Context {
       try {
         const sampleFiles = selectSampleFiles(files, 5);
         const samples = await Promise.allSettled(
-          sampleFiles.map((f) => fs.promises.readFile(f, 'utf-8'))
+          sampleFiles.map((f) => fs.promises.readFile(f, 'utf-8')),
         );
         const validSamples = samples
           .filter((r) => r.status === 'fulfilled')
@@ -191,7 +176,7 @@ export class Context {
         if (this.registry.has(library, docId, contentHash)) return null;
 
         return { ...doc, id: docId, contentHash, sourceFilePath: relativePath };
-      })
+      }),
     );
 
     // Internal type that extends Document with load-phase metadata.
@@ -213,7 +198,7 @@ export class Context {
     }
     if (failCount > 0) {
       console.warn(
-        `[context] ${failCount}/${files.length} file(s) failed to load in library "${library}" and were skipped.`
+        `[context] ${failCount}/${files.length} file(s) failed to load in library "${library}" and were skipped.`,
       );
     }
 
@@ -239,9 +224,7 @@ export class Context {
       vector: vectors[index],
       fields: {
         content: doc.content,
-        meta: doc.meta && Object.keys(doc.meta).length > 0
-          ? JSON.stringify(doc.meta)
-          : '',
+        meta: doc.meta && Object.keys(doc.meta).length > 0 ? JSON.stringify(doc.meta) : '',
         sourceFilePath: doc.sourceFilePath ?? '',
       },
     }));
@@ -267,17 +250,12 @@ export class Context {
    * matching via RRF fusion for better recall. Use `mode: 'vector'` for
    * pure semantic search when FTS is not needed.
    *
-   * Supports querying a single library, multiple libraries (array),
-   * or all loaded libraries ('*' wildcard).
-   *
    * @param text     Query text.
    * @param options  Query options (library, topK, mode).
    * @returns        Ranked results with content and score.
    */
   async query(text: string, options: QueryOptions): Promise<QueryResult[]> {
-    const libraries = resolveLibraries(options.library, this.registry);
-
-    if (libraries.length === 0) return [];
+    const library = options.library;
 
     // Expand the query with synonyms / cross-language bridging terms.
     // The expanded text is used for both embedding and FTS, so a single
@@ -291,51 +269,41 @@ export class Context {
     // Reranking pipeline: pull extra candidates from the coarse search so the
     // reranker has a larger pool to select from. Without reranking, search
     // exactly topK for efficiency.
-    const rerankFactor = (options.rerank && typeof options.rerank === 'object'
-      ? options.rerank.rerankFactor : undefined) ?? 3;
-    const minCandidates = (options.rerank && typeof options.rerank === 'object'
-      ? options.rerank.minCandidates : undefined) ?? 10;
-    const searchTopK = rerankEnabled
-      ? Math.max(topK * rerankFactor, minCandidates)
-      : topK;
+    const rerankFactor =
+      (options.rerank && typeof options.rerank === 'object'
+        ? options.rerank.rerankFactor
+        : undefined) ?? 3;
+    const minCandidates =
+      (options.rerank && typeof options.rerank === 'object'
+        ? options.rerank.minCandidates
+        : undefined) ?? 10;
+    const searchTopK = rerankEnabled ? Math.max(topK * rerankFactor, minCandidates) : topK;
 
-    // Query all libraries concurrently and merge results.
-    // Each library's store is independent — running searches in parallel
-    // eliminates the serial wait time when querying multiple libraries.
-    const perLibraryResults = await Promise.all(
-      libraries.map(async (library) => {
-        const searchResults = await this.store.queryDoc(library, {
-          mode,
-          queryText: expandedText,
-          queryVector: vector,
-          topK: searchTopK,
-          filter: options.filter,
-        });
+    const searchResults = await this.store.queryDoc(library, {
+      mode,
+      queryText: expandedText,
+      queryVector: vector,
+      topK: searchTopK,
+      filter: options.filter,
+    });
 
-        if (searchResults.length === 0) return [] as QueryResult[];
+    if (searchResults.length === 0) return [];
 
-        return searchResults.map((result) => {
-          const content = String(result.fields?.content ?? '');
-          const metaStr = result.fields?.meta as string | undefined;
-          const meta = safeParseMeta(metaStr);
+    const allResults: QueryResult[] = searchResults.map((result) => {
+      const content = String(result.fields?.content ?? '');
+      const metaStr = result.fields?.meta as string | undefined;
+      const meta = safeParseMeta(metaStr);
 
-          return {
-            id: result.id,
-            content,
-            score: result.score,
-            scoreMode: mode === 'hybrid' ? 'hybrid' as const : 'vector' as const,
-            meta,
-            sourceFilePath: result.fields?.sourceFilePath as string | undefined,
-            library,
-            embedderKind: this._embedderInfo.kind,
-          };
-        });
-      })
-    );
-
-    // Flatten and sort by coarse score
-    const allResults = perLibraryResults.flat();
-    allResults.sort((a, b) => b.score - a.score);
+      return {
+        id: result.id,
+        content,
+        score: result.score,
+        scoreMode: mode === 'hybrid' ? ('hybrid' as const) : ('vector' as const),
+        meta,
+        sourceFilePath: result.fields?.sourceFilePath as string | undefined,
+        embedderKind: this._embedderInfo.kind,
+      };
+    });
 
     // Stage 2: Rerank the candidate pool for precision (when enabled).
     // Pull extra candidates, re-score each against the query, then keep topK.
@@ -362,63 +330,6 @@ export class Context {
     // Final sort by (possibly reranked) score and return topK
     allResults.sort((a, b) => b.score - a.score);
     return allResults.slice(0, topK);
-  }
-
-  /**
-   * Remove a document from a library's dedup registry.
-   *
-   * **Important**: this only removes the document from the deduplication
-   * tracking — the underlying vectors remain in the store because zvec
-   * does not support single-document deletion. To actually remove the
-   * vector data, call `rebuild(library)` after untracking documents.
-   *
-   * Typical workflow for updating a document:
-   *   1. `ctx.untrack(library, docId)`   — remove from dedup tracking
-   *   2. `ctx.rebuild(library)`          — delete store + re-embed remaining docs
-   *
-   * @param library  Library name.
-   * @param id       Document ID to untrack.
-   */
-  async untrack(library: string, id: string): Promise<void> {
-    if (!this.registry.has(library, id)) return;
-
-    this.registry.remove(library, id);
-    this.registry.saveToDisk(this.vectorsDir, library);
-    await this.store.close(library);
-  }
-
-  /**
-   * Rebuild a library's vector store from scratch.
-   *
-   * Deletes the existing `.zvec` store file, clears the dedup registry,
-   * and re-embeds all documents that match the given glob pattern(s).
-   *
-   * Use this after `untrack()` to physically remove unwanted vectors, or
-   * when the store schema needs to change (e.g. new FTS fields).
-   *
-   * @param library  Library name to rebuild.
-   * @param pattern  Glob pattern(s) for re-loading documents.
-   */
-  async rebuild(library: string, pattern: string | string[]): Promise<void> {
-    // Close and delete the existing store
-    await this.store.close(library);
-    await this.store.deleteStore(library);
-
-    // Clear the registry so all docs will be re-loaded
-    this.registry.removeLibrary(library);
-    this.registry.saveToDisk(this.vectorsDir, library);
-
-    // Re-load all matching documents
-    await this.load(library, pattern);
-  }
-
-  /**
-   * @deprecated Use `untrack()` instead. This alias only removes the
-   * dedup tracking entry — vector data remains in the store.
-   * To physically remove data, call `untrack()` then `rebuild()`.
-   */
-  async remove(library: string, id: string): Promise<void> {
-    return this.untrack(library, id);
   }
 
   /**

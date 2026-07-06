@@ -8,18 +8,10 @@ A local context retrieval library that enables semantic search over your documen
 
 ## Features
 
-- 📄 **Multi-format Support**: Supports Markdown, JSON, Text, and other file formats
-- 📚 **Multi-library Support**: Manage documents by library
-- ⚡ **Auto-indexing**: Automatic vectorization on load with batch embedding for performance
-- 🔍 **Hybrid Retrieval**: Combines vector similarity + FTS text matching via RRF fusion for better recall
-- 🔄 **Deduplication**: Automatically skip already-loaded documents; content-hash change detection for re-embedding updated files
-- ⚖️ **Weight Configuration**: Per-field FTS boost weights and RRF rank constant tuning
-- 🛡️ **Clear Error Messages**: Throws descriptive errors when Transformers model is unavailable, guiding users to fix the issue
-- 🔁 **Two-stage Reranking**: KeywordReranker boosts candidates with exact query term matches after coarse vector/hybrid search
-- 🔁 **Two-stage Reranking**: KeywordReranker boosts candidates with exact query term matches after coarse vector/hybrid search
-- 🌐 **Query Expansion**: SynonymExpander uses user-provided synonym maps to bridge CN↔EN terminology gaps
-- 📊 **Progress Callback**: `onProgress` hook for monitoring load phases (load → embed → insert)
-- 🏗️ **fromDir() Quick-start**: One-call setup from a project directory with auto-derived defaults
+- 📄 **Multi-format Support**: Markdown, JSON, Text 文档自动加载与向量化
+- 🔍 **Hybrid Retrieval**: 向量语义 + FTS 全文检索双路召回，RRF 融合排序
+- 🔁 **Two-stage Reranking**: KeywordReranker 精排，关键词命中优先
+- 🌐 **Query Expansion**: 用户自定义同义词表，CN↔EN 跨语言召回增强
 
 
 ## Quick Start
@@ -34,22 +26,13 @@ import { Context } from '@antv/context';
 // Standard creation — specify vectorsDir
 const ctx = await Context.create({ vectorsDir: './vectors' });
 
-// Quick-start from a project directory (auto-derives basePath & vectorsDir)
-const ctx2 = await Context.fromDir('/path/to/project');
-
 // Load documents into a specific library with automatic vectorization
 await ctx.load('g2', './g2-docs/**/*.md');
 await ctx.load('f2', './f2-docs/**/*.json');
 
-// Query a single library (default: hybrid search + reranking)
+// Query a library (default: hybrid search + reranking)
 const results = await ctx.query('How to configure a line chart', { library: 'g2', topK: 5 });
 // => [{ content: '...', score: 0.92, scoreMode: 'reranked', id: 'g2-docs/line.md' }, ...]
-
-// Query multiple libraries (array form)
-const crossResults = await ctx.query('chart configuration', { library: ['g2', 'f2'], topK: 5 });
-
-// Query all loaded libraries
-const allResults = await ctx.query('visualization', { library: '*', topK: 10 });
 
 // Close when done (releases resources)
 await ctx.close();
@@ -138,18 +121,12 @@ Two-stage retrieval: coarse search (vector / hybrid) → reranking → final top
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `library` | `string | string[]` | — | Library name(s). Single: `'g2'`, Multiple: `['g2', 'f2']`, All: `'*'`. Comma-separated `'g2,f2'` also supported. |
+| `library` | `string` | — | Library name to query. |
 | `topK` | `number` | `5` | Number of results to return |
 
 ```typescript
 // Semantic search — hybrid (vector + FTS) + reranking by default
 const results = await ctx.query('sankey diagram', { library: 'g2', topK: 5 });
-
-// Multiple libraries
-const results = await ctx.query('chart', { library: ['g2', 'f2'], topK: 5 });
-
-// All libraries
-const results = await ctx.query('chart', { library: '*', topK: 5 });
 ```
 
 #### Query Result Fields
@@ -164,60 +141,7 @@ Each result includes:
 | `scoreMode` | `'vector' | 'hybrid' | 'reranked'` | How the score was computed |
 | `meta` | `Record<string, unknown>` | Front-matter metadata (if present) |
 | `sourceFilePath` | `string` | Original file path relative to `basePath` |
-| `library` | `string` | Which library this result came from |
 
-### `ctx.untrack(library, id)`
-
-Remove a document from a library's dedup registry. **Important**: zvec does not support single-document deletion, so vector data remains in the store. `untrack()` only removes the dedup entry — the actual vectors remain until you call `rebuild()`.
-
-| Parameter | Type | Description |
-|-----------|------|---------|
-| `library` | `string` | Library name |
-| `id` | `string` | Document ID to untrack from dedup tracking |
-
-```typescript
-await ctx.untrack('g2', 'abc123__getting_started');
-```
-
-### `ctx.rebuild(library, pattern)`
-
-Rebuild a library's vector store from scratch. Deletes the existing `.zvec` store file, clears the dedup registry, and re-embeds all matching documents. Use this after `untrack()` to actually remove vectors.
-
-| Parameter | Type | Description |
-|-----------|------|---------|
-| `library` | `string` | Library name to rebuild |
-| `pattern` | `string | string[]` | Glob pattern(s) for re-loading documents |
-
-```typescript
-// Rebuild after untracking documents
-await ctx.untrack('g2', 'abc123__getting_started');
-await ctx.rebuild('g2', './g2-docs/**/*.md');
-```
-
-### `Context.fromDir(dir, options?)`
-
-Quick-start convenience method — creates a Context from a project directory with auto-derived defaults (`basePath` = dir, `vectorsDir` = dir/.context/vectors).
-
-| Parameter | Type | Description |
-|-----------|------|---------|
-| `dir` | `string` | Project directory path |
-| `options` | `Partial<ContextOptions>` | Optional overrides for auto-derived defaults |
-
-```typescript
-const ctx = await Context.fromDir('/path/to/project');
-// With custom overrides
-const ctx = await Context.fromDir('/path/to/project', { ftsFieldWeights: { content: 2 } });
-```
-
-### `ctx.remove(library, id)` — **Deprecated**
-
-> Use `untrack()` instead. This alias only removes the dedup tracking entry — vector data remains in the store.
-> To physically remove data, call `untrack()` then `rebuild()`.
-
-```typescript
-// Deprecated — use untrack() + rebuild() instead
-await ctx.remove('g2', 'abc123__getting_started');
-```
 
 ### `ctx.close()`
 

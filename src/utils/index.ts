@@ -5,10 +5,9 @@
  * a specific domain module (embedder, loaders, storage).
  */
 
-// Common helpers — JSON parsing, library resolution, hashing, sampling
+// Common helpers — JSON parsing, hashing, sampling
 export {
   safeParseMeta,
-  resolveLibraries,
   computeContentHash,
   selectSampleFiles,
 } from './common';

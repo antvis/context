@@ -98,11 +98,6 @@ describe('Context', () => {
       expect(results.length).toBe(0);
     });
 
-    it('should support array library parameter', async () => {
-      const results = await ctx.query('install', { library: ['md', 'json'], topK: 5 });
-      expect(results.length).toBeGreaterThan(0);
-    });
-
     it('should default to hybrid search mode', async () => {
       // Default mode is 'hybrid' — combines vector + text path
       const results = await ctx.query('install', { library: 'md', topK: 1 });
@@ -111,13 +106,6 @@ describe('Context', () => {
 
     it('should support vector-only search mode', async () => {
       const results = await ctx.query('install', { library: 'md', topK: 1, mode: 'vector' });
-      expect(results.length).toBeGreaterThan(0);
-    });
-  });
-
-  describe('cross-library query', () => {
-    it('should query multiple comma-separated libraries', async () => {
-      const results = await ctx.query('install', { library: 'md,json', topK: 5 });
       expect(results.length).toBeGreaterThan(0);
     });
   });
