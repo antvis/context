@@ -286,28 +286,4 @@ describe('Context with weight configuration', () => {
 
     await ctx.close();
   });
-
-  it('should use hybrid search with MemoryZvecStore when zvec unavailable', async () => {
-    // When zvec is not available, MemoryZvecStore is used with FtsFieldWeights
-    const ctx = await Context.create({
-      vectorsDir: weightTestDir + '-mem',
-      ftsFields: ['content'],
-      ftsFieldWeights: { content: 3 },
-    });
-
-    await ctx.load('mem-weighted', path.join(FIXTURES_DIR, 'getting-started.md'));
-
-    // Hybrid mode (default) should use both vector + text path
-    const hybridResults = await ctx.query('Getting Started', { library: 'mem-weighted', topK: 1 });
-    expect(hybridResults.length).toBeGreaterThan(0);
-
-    // Vector-only mode should work too
-    const vectorResults = await ctx.query('Getting Started', { library: 'mem-weighted', topK: 1, mode: 'vector' });
-    expect(vectorResults.length).toBeGreaterThan(0);
-
-    await ctx.close();
-    if (fs.existsSync(weightTestDir + '-mem')) {
-      fs.rmSync(weightTestDir + '-mem', { recursive: true, force: true });
-    }
-  });
 });

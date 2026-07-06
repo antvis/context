@@ -44,7 +44,6 @@ export type { EmbedderInfo, EmbedderKind } from './embedder';
 // Zvec store — custom vector storage backends
 export {
   IZvecStore,
-  MemoryZvecStore,
   ActualZvecStore,
   createZvecStore,
   openZvecStore,
@@ -58,7 +57,6 @@ export type {
   ZvecQueryResult,
   ZvecSearchParams,
   ZvecHybridParams,
-  FtsFieldWeight,
   ZvecFieldSchema,
   ZvecStoreConfig,
   ActualZvecStoreOptions,

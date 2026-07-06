@@ -3,11 +3,9 @@ import * as path from 'path';
 import {
   createZvecStore,
   openZvecStoreSync,
-  isZvecAvailable,
 } from './zvec-store';
-import type { IZvecStore, ZvecStoreConfig, FtsFieldWeight, ActualZvecStoreOptions } from './zvec-store';
-import type { ZvecDoc, ZvecQueryResult, ZvecSearchParams, ZvecHybridParams } from './types';
-import { MemoryZvecStore } from './memory-store';
+import type { IZvecStore, ZvecStoreConfig, ActualZvecStoreOptions } from './zvec-store';
+import type { ZvecDoc, ZvecQueryResult } from './types';
 import type { Embedder } from '../embedder';
 import { detectTokenizer } from '../utils/tokenizer';
 import type { ContextOptions } from '../types';
@@ -19,24 +17,6 @@ import type { ContextOptions } from '../types';
 const DEFAULT_VECTOR_FIELD = 'embedding';
 const DEFAULT_FTS_FIELDS = ['content'];
 const DEFAULT_RANK_CONSTANT = 60;
-
-function resolveFtsFields(options?: ContextOptions): string[] {
-  return options?.ftsFields ?? DEFAULT_FTS_FIELDS;
-}
-
-function resolveFtsWeights(options?: ContextOptions): FtsFieldWeight[] {
-  const ftsFields = resolveFtsFields(options);
-  const weightMap = options?.ftsFieldWeights;
-
-  if (weightMap) {
-    return ftsFields.map((fieldName) => ({
-      fieldName,
-      weight: weightMap[fieldName] ?? 1.0,
-    }));
-  }
-
-  return ftsFields.map((fieldName) => ({ fieldName, weight: 1.0 }));
-}
 
 function resolveTokenizer(sampleText?: string): string {
   // Always auto-detect based on sample text content.
@@ -73,7 +53,7 @@ function contextStoreConfig(dims: number, sampleText?: string): ZvecStoreConfig 
 function storeOpenOptions(options?: ContextOptions): ActualZvecStoreOptions {
   return {
     vectorField: DEFAULT_VECTOR_FIELD,
-    ftsFields: resolveFtsFields(options),
+    ftsFields: options?.ftsFields ?? DEFAULT_FTS_FIELDS,
     rankConstant: options?.rankConstant ?? DEFAULT_RANK_CONSTANT,
   };
 }
@@ -112,7 +92,6 @@ export interface StoreQueryParams {
 export class Store {
   private readonly vectorsDir: string;
   private readonly embedder: Embedder;
-  private readonly ftsWeights: FtsFieldWeight[];
   private readonly rankConstant: number;
   private readonly contextOptions?: ContextOptions;
   private readonly stores: Map<string, IZvecStore> = new Map();
@@ -122,7 +101,6 @@ export class Store {
   constructor(vectorsDir: string, embedder: Embedder, options?: ContextOptions) {
     this.vectorsDir = vectorsDir;
     this.embedder = embedder;
-    this.ftsWeights = resolveFtsWeights(options);
     this.rankConstant = options?.rankConstant ?? DEFAULT_RANK_CONSTANT;
     this.contextOptions = options;
   }
@@ -254,44 +232,15 @@ export class Store {
 
   private async _doCreate(library: string, sampleText?: string): Promise<IZvecStore> {
     const filePath = this._getStorePath(library);
-    const allowFallback = this.contextOptions?.allowMemoryFallback ?? false;
 
     if (fs.existsSync(filePath)) {
-      if (isZvecAvailable()) {
-        return openZvecStoreSync(filePath, storeOpenOptions(this.contextOptions));
-      }
-      if (allowFallback) {
-        console.warn(
-          `[context] @zvec/zvec not available — opening library "${library}" ` +
-          `with in-memory MemoryZvecStore. Data will NOT be persisted.`
-        );
-        return new MemoryZvecStore(this.ftsWeights, this.rankConstant);
-      }
-      throw new Error(
-        `Cannot open existing store "${filePath}": @zvec/zvec is not installed. ` +
-        `Install it with: pnpm add @zvec/zvec\n` +
-        `Or set allowMemoryFallback: true to use in-memory store (no persistence).`
-      );
+      return openZvecStoreSync(filePath, storeOpenOptions(this.contextOptions));
     }
 
-    try {
-      return await createZvecStore(
-        filePath,
-        contextStoreConfig(this.embedder.dimensions, sampleText),
-        this.ftsWeights,
-        this.rankConstant,
-      );
-    } catch (err) {
-      if (allowFallback) {
-        console.warn(
-          `[context] Store creation failed for library "${library}", ` +
-          `falling back to in-memory MemoryZvecStore. ` +
-          `Error: ${(err as Error).message?.split('\n')[0]}`
-        );
-        return new MemoryZvecStore(this.ftsWeights, this.rankConstant);
-      }
-      throw err;
-    }
+    return await createZvecStore(
+      filePath,
+      contextStoreConfig(this.embedder.dimensions, sampleText),
+    );
   }
 
   /**
@@ -300,10 +249,15 @@ export class Store {
    */
   private _tryOpenFromDisk(library: string): IZvecStore | undefined {
     const filePath = this._getStorePath(library);
-    if (fs.existsSync(filePath) && isZvecAvailable()) {
-      const store = openZvecStoreSync(filePath, storeOpenOptions(this.contextOptions));
-      this.stores.set(library, store);
-      return store;
+    if (fs.existsSync(filePath)) {
+      try {
+        const store = openZvecStoreSync(filePath, storeOpenOptions(this.contextOptions));
+        this.stores.set(library, store);
+        return store;
+      } catch {
+        // @zvec/zvec not available — cannot open
+        return undefined;
+      }
     }
     return undefined;
   }

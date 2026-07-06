@@ -337,40 +337,31 @@ export class ActualZvecStore implements IZvecStore {
 /**
  * Create a zvec store with the given config.
  *
- * When @zvec/zvec is available, creates a persisted ActualZvecStore.
- * Otherwise falls back to an in-memory MemoryZvecStore.
+ * Requires @zvec/zvec to be installed. Throws an error when it is not available.
  */
 export async function createZvecStore(
   path: string,
   config: ZvecStoreConfig,
-  memoryFtsWeights?: import('./types').FtsFieldWeight[],
-  rankConstant?: number,
 ): Promise<IZvecStore> {
-  const z = loadZvecSync();
-  if (z) {
-    return ActualZvecStore.create(path, config);
-  }
-  const { MemoryZvecStore } = await import('./memory-store');
-  return new MemoryZvecStore(memoryFtsWeights, rankConstant);
+  return ActualZvecStore.create(path, config);
 }
 
 /**
  * Asynchronously open a zvec store.
+ *
+ * Requires @zvec/zvec to be installed.
  */
 export async function openZvecStore(
   path: string,
   options?: ActualZvecStoreOptions
 ): Promise<IZvecStore> {
-  // Both ActualZvecStore.open() and MemoryZvecStore are internally
-  // synchronous — this async wrapper is for API consistency only.
   return openZvecStoreSync(path, options);
 }
 
 /**
  * Synchronously open a zvec store.
  *
- * This avoids the async Promise wrapper so it can be used inside synchronous
- * code paths (e.g. `retrieve()`).
+ * Requires @zvec/zvec to be installed. Throws an error when it is not available.
  */
 export function openZvecStoreSync(
   path: string,
@@ -381,9 +372,8 @@ export function openZvecStoreSync(
     return ActualZvecStore.openSync(path, options);
   }
   throw new Error(
-    'Cannot open zvec store: @zvec/zvec is not installed and MemoryZvecStore ' +
-      'has no persistence. Install @zvec/zvec or use createZvecStore() to create ' +
-      'a new MemoryZvecStore.'
+    '@zvec/zvec is not installed. Install it with:\n' +
+      '  pnpm add @zvec/zvec'
   );
 }
 

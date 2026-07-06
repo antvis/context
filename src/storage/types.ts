@@ -43,12 +43,6 @@ export interface IZvecStore {
   close(): Promise<void>;
 }
 
-/** Weighted field for MemoryZvecStore FTS text scoring in hybrid search. */
-export interface FtsFieldWeight {
-  fieldName: string;
-  weight: number;
-}
-
 /** Field schema entry for building a zvec collection. */
 export interface ZvecFieldSchema {
   name: string;

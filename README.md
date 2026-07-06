@@ -213,7 +213,7 @@ await ctx.close();
 - **Public API**: `Context`, `QueryOptions`, `QueryResult`, `Document`, `Loader`, `MarkdownLoader`, `JsonLoader`, `TextLoader`, `pathToId`
 - **Reranking**: `KeywordReranker`, `createReranker`, `Reranker`, `RerankCandidate`, `RerankResult`, `RerankOptions`
 - **Query Expansion**: `SynonymExpander`, `NoopExpander`, `QueryExpander`, `QueryExpansionOptions`
-- **Advanced API**: `Embedder`, `TransformersEmbedder`, `EmbedderManager`, `IZvecStore`, `MemoryZvecStore`, `ActualZvecStore`, `DocumentRegistry`, `Store`
+- **Advanced API**: `Embedder`, `TransformersEmbedder`, `EmbedderManager`, `IZvecStore`, `ActualZvecStore`, `DocumentRegistry`, `Store`
 
 
 ## License

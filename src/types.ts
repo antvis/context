@@ -144,21 +144,6 @@ export interface ContextOptions {
    * ```
    */
   rerankWeights?: Omit<import('./utils/reranker').RerankOptions, 'rerankFactor' | 'minCandidates'>;
-
-  /**
-   * Allow automatic fallback to in-memory store when @zvec/zvec is unavailable.
-   *
-   * When `true`, if @zvec/zvec cannot be loaded, the library will silently
-   * fall back to `MemoryZvecStore` (no persistence, vectors lost on restart).
-   * A warning is logged to console.
-   *
-   * When `false` (default), missing @zvec/zvec throws an error at store
-   * creation time, making the failure explicit.
-   *
-   * Useful for development/testing environments where native bindings
-   * may not be available.
-   */
-  allowMemoryFallback?: boolean;
 }
 
 /**
@@ -262,7 +247,6 @@ export type {
   ZvecQueryResult,
   ZvecSearchParams,
   ZvecHybridParams,
-  FtsFieldWeight,
   ZvecFieldSchema,
   ZvecStoreConfig,
 } from './storage/zvec-store';

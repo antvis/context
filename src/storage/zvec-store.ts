@@ -2,10 +2,9 @@
  * zvec-store — aggregate entry point for all storage modules.
  *
  * Re-exports from the split files for backward compatibility:
- *   types.ts    → public types & interfaces
- *   memory-store.ts → MemoryZvecStore
+ *   types.ts        → public types & interfaces
  *   actual-store.ts → ActualZvecStore, factories, schema builder
- *   utils.ts    → cosineSimilarity, evalMemoryFilter
+ *   utils.ts        → cosineSimilarity
  */
 
 export type {
@@ -14,13 +13,10 @@ export type {
   ZvecSearchParams,
   ZvecHybridParams,
   IZvecStore,
-  FtsFieldWeight,
   ZvecFieldSchema,
   ZvecStoreConfig,
   ActualZvecStoreOptions,
 } from './types';
-
-export { MemoryZvecStore } from './memory-store';
 
 export {
   ActualZvecStore,
