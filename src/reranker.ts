@@ -108,7 +108,7 @@ const DEFAULT_WEIGHTS = {
  * Scores are normalised to [0, 1] via min-max scaling.
  */
 export class KeywordReranker implements Reranker {
-  private readonly weights: typeof DEFAULT_WEIGHTS;
+  private readonly weights: Record<string, number>;
 
   constructor(options?: RerankOptions) {
     this.weights = {
