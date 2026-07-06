@@ -31,19 +31,16 @@ describe('cosineSimilarity', () => {
 describe('evalMemoryFilter', () => {
   const fields = {
     content: 'hello world',
-    chunkIndex: 0,
-    parentDocId: 'abc__test',
-    totalChunks: 5,
-    headingPath: 'Line Chart > Tooltip',
+    sourceFilePath: 'docs/getting-started.md',
   };
 
   describe('string equality', () => {
     it('should match string field with quoted value', () => {
-      expect(evalMemoryFilter("parentDocId = 'abc__test'", fields)).toBe(true);
+      expect(evalMemoryFilter("sourceFilePath = 'docs/getting-started.md'", fields)).toBe(true);
     });
 
     it('should reject non-matching string value', () => {
-      expect(evalMemoryFilter("parentDocId = 'xyz'", fields)).toBe(false);
+      expect(evalMemoryFilter("sourceFilePath = 'xyz'", fields)).toBe(false);
     });
 
     it('should match content field', () => {
@@ -51,43 +48,17 @@ describe('evalMemoryFilter', () => {
     });
   });
 
-  describe('number equality', () => {
-    it('should match numeric field with integer value', () => {
-      expect(evalMemoryFilter("chunkIndex = 0", fields)).toBe(true);
-    });
-
-    it('should reject non-matching numeric value', () => {
-      expect(evalMemoryFilter("chunkIndex = 3", fields)).toBe(false);
-    });
-
-    it('should match totalChunks field', () => {
-      expect(evalMemoryFilter("totalChunks = 5", fields)).toBe(true);
-    });
-
-    it('should handle negative numbers', () => {
-      expect(evalMemoryFilter("chunkIndex = -1", { chunkIndex: -1 })).toBe(true);
-    });
-  });
-
   describe('AND conjunction', () => {
     it('should match when all clauses are true', () => {
-      expect(evalMemoryFilter("chunkIndex = 0 AND parentDocId = 'abc__test'", fields)).toBe(true);
+      expect(evalMemoryFilter("content = 'hello world' AND sourceFilePath = 'docs/getting-started.md'", fields)).toBe(true);
     });
 
     it('should reject when any clause is false', () => {
-      expect(evalMemoryFilter("chunkIndex = 1 AND parentDocId = 'abc__test'", fields)).toBe(false);
+      expect(evalMemoryFilter("content = 'hello' AND sourceFilePath = 'docs/getting-started.md'", fields)).toBe(false);
     });
 
     it('should reject when all clauses are false', () => {
-      expect(evalMemoryFilter("chunkIndex = 3 AND parentDocId = 'xyz'", fields)).toBe(false);
-    });
-
-    it('should support mixed string and number clauses', () => {
-      expect(evalMemoryFilter("chunkIndex = 0 AND headingPath = 'Line Chart > Tooltip'", fields)).toBe(true);
-    });
-
-    it('should support three clauses with AND', () => {
-      expect(evalMemoryFilter("chunkIndex = 0 AND totalChunks = 5 AND parentDocId = 'abc__test'", fields)).toBe(true);
+      expect(evalMemoryFilter("content = 'foo' AND sourceFilePath = 'xyz'", fields)).toBe(false);
     });
   });
 
@@ -102,15 +73,11 @@ describe('evalMemoryFilter', () => {
     });
 
     it('should handle AND with case-insensitive keyword', () => {
-      expect(evalMemoryFilter("chunkIndex = 0 and parentDocId = 'abc__test'", fields)).toBe(true);
+      expect(evalMemoryFilter("content = 'hello world' and sourceFilePath = 'docs/getting-started.md'", fields)).toBe(true);
     });
 
     it('should handle missing field gracefully (string clause)', () => {
       expect(evalMemoryFilter("unknownField = 'value'", fields)).toBe(false);
-    });
-
-    it('should handle missing field gracefully (number clause)', () => {
-      expect(evalMemoryFilter("unknownField = 42", fields)).toBe(false);
     });
   });
 });

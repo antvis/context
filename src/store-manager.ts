@@ -70,10 +70,6 @@ function contextStoreConfig(dims: number, options?: ContextOptions, sampleText?:
         indexOptions: { tokenizerName },
       },
       { name: 'meta', dataType: 'STRING' },
-      { name: 'chunkIndex', dataType: 'INT64' },
-      { name: 'totalChunks', dataType: 'INT64' },
-      { name: 'parentDocId', dataType: 'STRING' },
-      { name: 'headingPath', dataType: 'STRING' },
       { name: 'sourceFilePath', dataType: 'STRING' },
     ],
   };

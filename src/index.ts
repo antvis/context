@@ -14,14 +14,6 @@ export {
 } from './loaders';
 export { pathToId } from './loaders/util';
 
-// Chunking — document splitting strategies
-export {
-  MarkdownChunker,
-  FixedSizeChunker,
-  createChunker,
-} from './loaders/chunker';
-export type { Chunk, Chunker } from './loaders/chunker';
-
 // Reranker — two-stage retrieval precision scoring
 export { KeywordReranker, createReranker } from './reranker';
 export type { Reranker, RerankCandidate, RerankResult } from './reranker';

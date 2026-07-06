@@ -15,10 +15,10 @@ A local context retrieval library that enables semantic search over your documen
 - 🔄 **Deduplication**: Automatically skip already-loaded documents; content-hash change detection for re-embedding updated files
 - ⚖️ **Weight Configuration**: Per-field FTS boost weights and RRF rank constant tuning
 - 🛡️ **Clear Error Messages**: Throws descriptive errors when Transformers model is unavailable, guiding users to fix the issue
-- 🧩 **Document Chunking**: Split documents into semantic chunks (heading-aware for Markdown, fixed-size for plain text) for finer-grained retrieval
+- 🔁 **Two-stage Reranking**: KeywordReranker boosts candidates with exact query term matches after coarse vector/hybrid search
 - 🔁 **Two-stage Reranking**: KeywordReranker boosts candidates with exact query term matches after coarse vector/hybrid search
 - 🌐 **Query Expansion**: SynonymExpander uses user-provided synonym maps to bridge CN↔EN terminology gaps
-- 📊 **Progress Callback**: `onProgress` hook for monitoring load phases (load → chunk → embed → insert)
+- 📊 **Progress Callback**: `onProgress` hook for monitoring load phases (load → embed → insert)
 - 🏗️ **fromDir() Quick-start**: One-call setup from a project directory with auto-derived defaults
 
 
@@ -43,7 +43,7 @@ await ctx.load('f2', './f2-docs/**/*.json');
 
 // Query a single library (default: hybrid search = vector + FTS text)
 const results = await ctx.query('How to configure a line chart', { library: 'g2', topK: 5 });
-// => [{ content: '...', score: 0.92, scoreMode: 'hybrid', id: 'g2-docs/line.md', chunk: {...} }, ...]
+// => [{ content: '...', score: 0.92, scoreMode: 'hybrid', id: 'g2-docs/line.md' }, ...]
 
 // Query with two-stage reranking (pulls extra candidates, then re-scores)
 const rerankedResults = await ctx.query('sankey diagram', { library: 'g2', topK: 5, rerank: { rerankFactor: 3 } });
@@ -58,10 +58,7 @@ const allResults = await ctx.query('visualization', { library: '*', topK: 10 });
 const vectorResults = await ctx.query('chart', { library: 'g2', topK: 5, mode: 'vector' });
 
 // Filter results by field value
-const filteredResults = await ctx.query('tooltip', { library: 'g2', topK: 5, filter: "parentDocId = 'abc123__getting_started'" });
-
-// Expand a chunk result — retrieve neighboring chunks for context
-const expanded = await ctx.expandChunk('g2', 'abc123__getting_started', { before: 1, after: 1 });
+const filteredResults = await ctx.query('tooltip', { library: 'g2', topK: 5, filter: "sourceFilePath = 'docs/line-chart.md'" });
 
 // Close when done (releases resources)
 await ctx.close();
@@ -79,8 +76,7 @@ await ctx.close();
 | `model` | `string` | auto | Transformers model name for embedding. Skipped when custom `embedder` is provided. |
 | `loaders` | `Loader[]` | built-in | Custom loaders (default: MarkdownLoader, JsonLoader, TextLoader) |
 | `embedder` | `Embedder` | auto-resolved | Custom embedder. Skips auto-resolution when provided. |
-| `onProgress` | `(phase, detail) => void` | — | Progress callback for `load()` phases: `'load'` → `'chunk'` → `'embed'` → `'insert'`. |
-| `chunking` | `ChunkingOptions | false` | `{ strategy: 'auto', maxChunkSize: 1024, chunkOverlap: 128 }` | Document chunking config. `false` disables chunking. |
+| `onProgress` | `(phase, detail) => void` | — | Progress callback for `load()` phases: `'load'` → `'embed'` → `'insert'`. |
 | `queryExpansion` | `QueryExpansionOptions | false` | `false` (no-op) | Query expansion with user-provided synonym map. `false` disables. Without `synonyms`, expansion is a no-op. |
 | `ftsFields` | `string[]` | `['content']` | Fields to index for Full Text Search in hybrid mode |
 | `ftsFieldWeights` | `Record<string, number>` | `{ content: 1 }` | Per-field boost weights for FTS text path. Higher = more influence. |
@@ -96,22 +92,6 @@ const ctx = await Context.create({
   ftsFieldWeights: { content: 1, title: 3 },
   // More "winner-takes-all" ranking
   rankConstant: 20,
-});
-```
-
-#### Chunking Configuration Example
-
-```typescript
-const ctx = await Context.create({
-  vectorsDir: './vectors',
-  // Heading-aware chunking for Markdown, fixed-size for plain text
-  chunking: { strategy: 'auto', maxChunkSize: 1024, chunkOverlap: 128 },
-});
-
-// Disable chunking — embed whole documents instead
-const ctxWhole = await Context.create({
-  vectorsDir: './vectors',
-  chunking: false,
 });
 ```
 
@@ -139,7 +119,7 @@ const ctxNoExpand = await Context.create({
 
 ### `ctx.load(library, pattern)`
 
-Load files into a specified library with automatic batch vectorization. Documents are split into semantic chunks (when chunking is enabled), embedded in batches, and inserted into the vector store. A content-hash change detection mechanism re-embeds files whose content has changed since the last load.
+Load files into a specified library with automatic batch vectorization. Documents are embedded in batches and inserted into the vector store. A content-hash change detection mechanism re-embeds files whose content has changed since the last load.
 
 Document IDs are derived from file paths relative to `basePath` for cross-machine consistency.
 
@@ -162,7 +142,7 @@ const ctx = await Context.create({
     console.log(`${phase}: ${detail.loaded}/${detail.total}`);
   },
 });
-// Phases: 'load' → 'chunk' → 'embed' → 'insert'
+// Phases: 'load' → 'embed' → 'insert'
 ```
 
 ### `ctx.query(text, options)`
@@ -175,7 +155,7 @@ Two-stage retrieval: coarse search (vector / hybrid) → optional reranking → 
 | `topK` | `number` | `5` | Number of results to return |
 | `mode` | `'hybrid' | 'vector'` | `'hybrid'` | Search mode. `'hybrid'` = vector + FTS text (better recall), `'vector'` = pure semantic search |
 | `rerank` | `RerankOptions | false` | `false` | Reranking configuration. Pass an object `{ rerankFactor, minCandidates }` to enable, or `false` to skip |
-| `filter` | `string` | — | Filter expression for zvec exact-match filtering, e.g. `"parentDocId = 'abc123'"` |
+| `filter` | `string` | — | Filter expression for zvec exact-match filtering, e.g. `"sourceFilePath = 'docs/line.md'"` |
 
 ```typescript
 // Hybrid search (default) — best recall for exact term matching
@@ -189,8 +169,8 @@ const results = await ctx.query('line chart config', {
 // Pure vector search — when FTS is not needed
 const results = await ctx.query('chart', { library: 'g2', topK: 5, mode: 'vector' });
 
-// Filter by parent document — retrieve all chunks of a specific doc
-const chunks = await ctx.query('tooltip', { library: 'g2', filter: "parentDocId = 'abc123'" });
+// Filter by source file path
+const filtered = await ctx.query('tooltip', { library: 'g2', filter: "sourceFilePath = 'docs/line.md'" });
 
 // Multiple libraries
 const results = await ctx.query('chart', { library: ['g2', 'f2'], topK: 5 });
@@ -205,12 +185,11 @@ Each result includes:
 
 | Field | Type | Description |
 |------|------|-------------|
-| `id` | `string` | Document / chunk ID |
+| `id` | `string` | Document ID |
 | `content` | `string` | Document content |
 | `score` | `number` | Similarity score (0–1) |
 | `scoreMode` | `'vector' | 'hybrid' | 'reranked'` | How the score was computed |
 | `meta` | `Record<string, unknown>` | Front-matter metadata (if present) |
-| `chunk` | `ChunkMeta` | Chunk metadata (if chunking is enabled) |
 | `sourceFilePath` | `string` | Original file path relative to `basePath` |
 | `library` | `string` | Which library this result came from |
 
@@ -240,21 +219,6 @@ Rebuild a library's vector store from scratch. Deletes the existing `.zvec` stor
 // Rebuild after untracking documents
 await ctx.untrack('g2', 'abc123__getting_started');
 await ctx.rebuild('g2', './g2-docs/**/*.md');
-```
-
-### `ctx.expandChunk(library, parentDocId, options?)`
-
-Expand a chunk result — retrieve neighboring chunks from the same parent document for context. Useful when a query returns a chunked fragment and you need surrounding context.
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `library` | `string` | — | Library the chunk belongs to |
-| `parentDocId` | `string` | — | Parent document ID (from `chunk.parentDocId`) |
-| `before` | `number` | `1` | Number of preceding chunks |
-| `after` | `number` | `1` | Number of following chunks |
-
-```typescript
-const expanded = await ctx.expandChunk('g2', 'abc123__getting_started', { before: 2, after: 2 });
 ```
 
 ### `Context.fromDir(dir, options?)`

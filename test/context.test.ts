@@ -51,8 +51,6 @@ describe('Context', () => {
     it('should load markdown files', async () => {
       await ctx.load('md', path.join(FIXTURES_DIR, 'getting-started.md'));
 
-      // With chunking, the matching chunk may not be the first result.
-      // Check that at least one result contains the expected term.
       const results = await ctx.query('installation', { library: 'md', topK: 3 });
       expect(results.length).toBeGreaterThan(0);
       const contents = results.map((r) => r.content).join(' ');
@@ -79,9 +77,8 @@ describe('Context', () => {
       await ctx.load('md', path.join(FIXTURES_DIR, 'getting-started.md'));
 
       const results = await ctx.query('install', { library: 'md', topK: 10 });
-      // With chunking enabled, a single doc may produce multiple chunks.
-      // The key invariant is that a second load() with the same pattern
-      // should NOT increase the count (dedup prevents double-insert).
+      // A second load() with the same pattern should NOT increase
+      // the count (dedup prevents double-insert).
       expect(results.length).toBeGreaterThan(0);
     });
   });
@@ -146,91 +143,6 @@ describe('Context', () => {
       }
     });
   });
-
-  describe('chunking', () => {
-    const chunkTestDir = TEST_DIR + '-chunk-test';
-
-    afterAll(() => {
-      if (fs.existsSync(chunkTestDir)) {
-        fs.rmSync(chunkTestDir, { recursive: true, force: true });
-      }
-    });
-
-    it('should split large documents into chunks', async () => {
-      const ctx = await Context.create({
-        vectorsDir: chunkTestDir,
-        embedder: testEmbedder,
-        chunking: { maxChunkSize: 500, chunkOverlap: 50 },
-      });
-
-      await ctx.load('chunked', path.join(FIXTURES_DIR, 'line-chart-guide.md'));
-
-      const results = await ctx.query('tooltip', { library: 'chunked', topK: 3 });
-      expect(results.length).toBeGreaterThan(0);
-
-      // At least one result should be a chunk (long doc with small maxChunkSize)
-      const chunkResults = results.filter((r) => r.chunk);
-      expect(chunkResults.length).toBeGreaterThan(0);
-
-      // Chunk metadata should be present
-      const chunk = chunkResults[0].chunk!;
-      expect(chunk.parentDocId).toContain('line_chart_guide');
-      expect(typeof chunk.chunkIndex).toBe('number');
-      expect(chunk.chunkIndex).toBeGreaterThanOrEqual(0);
-
-      await ctx.close();
-    });
-
-    it('should include headingPath in chunk metadata', async () => {
-      const ctx = await Context.create({
-        vectorsDir: chunkTestDir + '-2',
-        embedder: testEmbedder,
-        chunking: { maxChunkSize: 400, chunkOverlap: 50 },
-      });
-
-      await ctx.load('chunked2', path.join(FIXTURES_DIR, 'line-chart-guide.md'));
-
-      // Query for tooltip section specifically
-      const results = await ctx.query('Line Chart with Tooltip hover', {
-        library: 'chunked2',
-        topK: 5,
-      });
-      expect(results.length).toBeGreaterThan(0);
-
-      // At least one chunk should have a heading path containing "Line Chart"
-      const withHeading = results.filter(
-        (r) => r.chunk?.headingPath?.some((h) => h.includes('Line Chart'))
-      );
-      expect(withHeading.length).toBeGreaterThan(0);
-
-      await ctx.close();
-      if (fs.existsSync(chunkTestDir + '-2')) {
-        fs.rmSync(chunkTestDir + '-2', { recursive: true, force: true });
-      }
-    });
-
-    it('should support disabling chunking', async () => {
-      const ctx = await Context.create({
-        vectorsDir: chunkTestDir + '-nochunk',
-        embedder: testEmbedder,
-        chunking: false,
-      });
-
-      await ctx.load('nochunk', path.join(FIXTURES_DIR, 'line-chart-guide.md'));
-
-      const results = await ctx.query('tooltip', { library: 'nochunk', topK: 3 });
-      expect(results.length).toBeGreaterThan(0);
-
-      // When chunking is disabled, no results should have chunk metadata
-      const chunkResults = results.filter((r) => r.chunk);
-      expect(chunkResults.length).toBe(0);
-
-      await ctx.close();
-      if (fs.existsSync(chunkTestDir + '-nochunk')) {
-        fs.rmSync(chunkTestDir + '-nochunk', { recursive: true, force: true });
-      }
-    });
-  });
 });
 
 describe('Context with reranking', () => {
@@ -246,7 +158,6 @@ describe('Context with reranking', () => {
       const ctx = await Context.create({
         vectorsDir: rerankTestDir,
         embedder: testEmbedder,
-        chunking: { maxChunkSize: 400, chunkOverlap: 50 },
       });
 
       await ctx.load('rerank', path.join(FIXTURES_DIR, 'line-chart-guide.md'));
@@ -271,7 +182,6 @@ describe('Context with reranking', () => {
       const ctx = await Context.create({
         vectorsDir: rerankTestDir + '-disabled',
         embedder: testEmbedder,
-        chunking: { maxChunkSize: 400, chunkOverlap: 50 },
       });
 
       await ctx.load('rerank2', path.join(FIXTURES_DIR, 'line-chart-guide.md'));
@@ -308,7 +218,6 @@ describe('Context with query expansion', () => {
       const ctx = await Context.create({
         vectorsDir: expandTestDir,
         embedder: testEmbedder,
-        chunking: { maxChunkSize: 500, chunkOverlap: 50 },
       });
 
       await ctx.load('expand', path.join(FIXTURES_DIR, 'line-chart-guide.md'));
@@ -331,7 +240,6 @@ describe('Context with query expansion', () => {
         vectorsDir: expandTestDir + '-disabled',
         embedder: testEmbedder,
         queryExpansion: false,
-        chunking: false,
       });
 
       await ctx.load('expand2', path.join(FIXTURES_DIR, 'getting-started.md'));
@@ -358,7 +266,6 @@ describe('Context with query expansion', () => {
             'animation': ['动效', 'animate', 'transition'],
           },
         },
-        chunking: { maxChunkSize: 500, chunkOverlap: 50 },
       });
 
       await ctx.load('expand3', path.join(FIXTURES_DIR, 'line-chart-guide.md'));

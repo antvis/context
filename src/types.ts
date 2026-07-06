@@ -11,27 +11,10 @@ export interface Document {
   /** Markdown front-matter metadata */
   meta?: Record<string, unknown>;
   /**
-   * Chunk metadata — populated when document chunking is enabled.
-   * Undefined for whole-document (unchunked) mode.
-   */
-  chunk?: ChunkMeta;
-  /**
    * SHA-256 content hash (16 chars) — used internally for change detection.
    * Populated by `Context.load()` before registry insertion; not stored in zvec.
    */
   contentHash?: string;
-}
-
-/** Metadata for a chunked document fragment. */
-export interface ChunkMeta {
-  /** Zero-based chunk index within the parent document. */
-  chunkIndex: number;
-  /** Total number of chunks in the parent document. */
-  totalChunks: number;
-  /** Parent document ID (hash-based). */
-  parentDocId: string;
-  /** Heading path from the document root to this chunk. */
-  headingPath: string[];
 }
 
 /** Configuration for query expansion. */
@@ -64,12 +47,6 @@ export interface RerankOptions {
    */
   minCandidates?: number;
 }
-
-/** Configuration for document chunking. Set to `false` to disable.
- *
- * Re-exported from loaders/chunker for convenience.
- * See {@link import('./loaders/chunker').ChunkingOptions} for full details. */
-export type { ChunkingOptions } from './loaders/chunker';
 
 /**
  * Context initialization options
@@ -115,18 +92,6 @@ export interface ContextOptions {
    * ```
    */
   onProgress?: (phase: LoadPhase, detail: LoadProgress) => void;
-
-  /**
-   * Document chunking configuration.
-   *
-   * When enabled, each document is split into semantic chunks (heading-aware
-   * for Markdown, fixed-size for plain text). Each chunk is independently
-   * embedded and can be retrieved at a finer granularity.
-   *
-   * Set to `false` to disable chunking and embed whole documents instead.
-   * Defaults to enabled with `{ strategy: 'auto', maxChunkSize: 1024, chunkOverlap: 128 }`.
-   */
-  chunking?: import('./loaders/chunker').ChunkingOptions | false;
 
   /**
    * Query expansion configuration.
@@ -264,10 +229,7 @@ export interface QueryOptions {
    * Passed directly to the zvec engine as an exact-match filter.
    * Format: `"field = 'value'"` or `"field = 'val1' AND field2 = 'val2'"`.
    *
-   * Useful for scoping queries to specific document categories, versions,
-   * or parent documents:
-   *   `"parentDocId = 'f3a1b2c4__getting_started'"` — all chunks of one doc
-   *   `"chunkIndex = 0"` — only first chunks
+   * Useful for scoping queries to specific document categories or versions.
    */
   filter?: string;
 }
@@ -294,12 +256,6 @@ export interface QueryResult {
   /** Document metadata */
   meta?: Record<string, unknown>;
   /**
-   * Chunk metadata — present when the result is a chunk of a larger document.
-   * Use `parentDocId` to look up the original document; `headingPath` shows
-   * the section path (e.g. ["Configuration", "Line Chart"]).
-   */
-  chunk?: ChunkMeta;
-  /**
    * Original file path relative to `basePath` — allows users to trace
    * back to the source document for context review or navigation.
    *
@@ -324,15 +280,15 @@ export interface QueryResult {
 /**
  * Load progress phases — emitted by `Context.load()` via the `onProgress` callback.
  */
-export type LoadPhase = 'load' | 'chunk' | 'embed' | 'insert';
+export type LoadPhase = 'load' | 'embed' | 'insert';
 
 /**
  * Load progress detail — passed to `onProgress` callback.
  */
 export interface LoadProgress {
-  /** How many documents/chunks have been processed in this phase */
+  /** How many documents have been processed in this phase */
   loaded: number;
-  /** Total documents/chunks to process in this phase */
+  /** Total documents to process in this phase */
   total: number;
 }
 

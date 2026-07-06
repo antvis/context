@@ -2,7 +2,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as crypto from 'crypto';
 import { glob } from 'glob';
-import { ContextOptions, QueryOptions, QueryResult, Document, ChunkMeta, LoadPhase, LoadProgress } from './types';
+import { ContextOptions, QueryOptions, QueryResult, Document, LoadPhase, LoadProgress } from './types';
 import {
   resolveEmbedder,
 } from './embedder';
@@ -13,8 +13,6 @@ import { DocumentRegistry } from './registry';
 import { StoreManager } from './store-manager';
 import type { ZvecDoc } from './storage/zvec-store';
 import { pathToId } from './loaders/util';
-import { createChunker } from './loaders/chunker';
-import type { Chunker } from './loaders/chunker';
 import { createReranker } from './reranker';
 import type { Reranker, RerankCandidate } from './reranker';
 import { SynonymExpander, NoopExpander } from './query-expander';
@@ -32,7 +30,6 @@ export class Context {
   private readonly storeManager: StoreManager;
   private readonly registry: DocumentRegistry;
   private readonly loaders: Loader[];
-  private readonly chunker: Chunker | null;
   private readonly reranker: Reranker | null;
   private readonly queryExpander: QueryExpander;
   private readonly _onProgress?: (phase: LoadPhase, detail: LoadProgress) => void;
@@ -49,13 +46,7 @@ export class Context {
       new JsonLoader(),
       new TextLoader(),
     ];
-    // Chunking defaults to enabled with auto strategy.
-    // Set `chunking: false` to embed whole documents instead.
-    this.chunker = options.chunking !== false
-      ? createChunker(options.chunking ?? undefined)
-      : null;
     // Reranker is created eagerly — it has no model-load cost (KeywordReranker).
-    // In the future this may be lazy if a cross-encoder is used.
     // Weights are configurable via ContextOptions.rerankWeights.
     this.reranker = createReranker(options.rerankWeights);
     // Query expansion — uses user-provided synonym map only, no built-in defaults.
@@ -113,13 +104,13 @@ export class Context {
   }
 
   /**
-   * Quick-start convenience method - creates a Context from a project directory.
+   * Quick-start convenience method — creates a Context from a project directory.
    *
    * Auto-derives sensible defaults:
    *   - basePath = dir (the project root)
    *   - vectorsDir = dir/.context/vectors (hidden, won't pollute project)
    *
-   * All other options (model, chunking, embedder, etc.) can still be
+   * All other options (model, embedder, etc.) can still be
    * overridden via options.
    */
   static async fromDir(dir: string, options?: Partial<ContextOptions>): Promise<Context> {
@@ -250,54 +241,25 @@ export class Context {
 
     if (docsToEmbed.length === 0) return;
 
-    // Phase 2: Apply chunking (if enabled). Each chunk is independently
-    // embedded so queries can match at the paragraph / section level.
-    const items = this.chunker
-      ? docsToEmbed.flatMap((doc) => {
-          const chunks = this.chunker!.chunk(doc);
-          return chunks.map((chunk) => ({
-            id: `${doc.id}__c${chunk.chunkIndex}`,
-            content: chunk.content,
-            meta: doc.meta,
-            sourceFilePath: doc.sourceFilePath,
-            chunk: {
-              chunkIndex: chunk.chunkIndex,
-              totalChunks: chunk.totalChunks,
-              parentDocId: doc.id,
-              headingPath: chunk.headingPath,
-            } satisfies ChunkMeta,
-          }));
-        })
-      : docsToEmbed;
-
-    // Progress: chunk phase complete
-    if (this._onProgress) {
-      this._onProgress('chunk', { loaded: items.length, total: docsToEmbed.length });
-    }
-
-    // Phase 3: Batch embed all items for better performance
-    const contents = items.map((item) => item.content);
+    // Phase 2: Batch embed all items for better performance
+    const contents = docsToEmbed.map((doc) => doc.content);
     const vectors = await this.embedder.embedBatch(contents);
 
     // Progress: embed phase complete
     if (this._onProgress) {
-      this._onProgress('embed', { loaded: vectors.length, total: items.length });
+      this._onProgress('embed', { loaded: vectors.length, total: docsToEmbed.length });
     }
 
-    // Phase 4: Batch insert into store
-    const zvecDocs: ZvecDoc[] = items.map((item, index) => ({
-      id: item.id,
+    // Phase 3: Batch insert into store
+    const zvecDocs: ZvecDoc[] = docsToEmbed.map((doc, index) => ({
+      id: doc.id,
       vector: vectors[index],
       fields: {
-        content: item.content,
-        meta: item.meta && Object.keys(item.meta).length > 0
-          ? JSON.stringify(item.meta)
+        content: doc.content,
+        meta: doc.meta && Object.keys(doc.meta).length > 0
+          ? JSON.stringify(doc.meta)
           : '',
-        chunkIndex: item.chunk?.chunkIndex ?? -1,
-        totalChunks: item.chunk?.totalChunks ?? 1,
-        parentDocId: item.chunk?.parentDocId ?? item.id,
-        headingPath: item.chunk?.headingPath?.join(' > ') ?? '',
-        sourceFilePath: item.sourceFilePath ?? '',
+        sourceFilePath: doc.sourceFilePath ?? '',
       },
     }));
 
@@ -305,10 +267,10 @@ export class Context {
 
     // Progress: insert phase complete
     if (this._onProgress) {
-      this._onProgress('insert', { loaded: zvecDocs.length, total: items.length });
+      this._onProgress('insert', { loaded: zvecDocs.length, total: docsToEmbed.length });
     }
 
-    // Phase 5: Update registry (track by parent doc ID for deduplication + change detection)
+    // Phase 4: Update registry (track by parent doc ID for deduplication + change detection)
     for (const doc of docsToEmbed) {
       this.registry.add(library, doc.id, doc.contentHash);
     }
@@ -375,34 +337,17 @@ export class Context {
           const content = String(result.fields?.content ?? '');
           const metaStr = result.fields?.meta as string | undefined;
           const meta = safeParseMeta(metaStr);
-          const chunkIndex = result.fields?.chunkIndex as number | undefined;
-          const parentDocId = result.fields?.parentDocId as string | undefined;
-          const headingPathRaw = result.fields?.headingPath as string | undefined;
 
-          const queryResult: QueryResult = {
+          return {
             id: result.id,
             content,
             score: result.score,
-            scoreMode: mode === 'hybrid' ? 'hybrid' : 'vector',
+            scoreMode: mode === 'hybrid' ? 'hybrid' as const : 'vector' as const,
             meta,
             sourceFilePath: result.fields?.sourceFilePath as string | undefined,
             library,
             embedderKind: this._embedderInfo.kind,
           };
-
-          // Attach chunk metadata when present (non-negative chunkIndex)
-          if (chunkIndex !== undefined && chunkIndex >= 0 && parentDocId) {
-            queryResult.chunk = {
-              chunkIndex,
-              totalChunks: result.fields?.totalChunks as number ?? 1,
-              parentDocId,
-              headingPath: headingPathRaw
-                ? headingPathRaw.split(' > ').filter(Boolean)
-                : [],
-            };
-          }
-
-          return queryResult;
         });
       })
     );
@@ -418,7 +363,6 @@ export class Context {
         id: r.id,
         content: r.content,
         score: r.score,
-        headingPath: r.chunk?.headingPath?.join(' > '),
       }));
 
       const reranked = await this.reranker!.rerank(text, candidates);
@@ -437,74 +381,6 @@ export class Context {
     // Final sort by (possibly reranked) score and return topK
     allResults.sort((a, b) => b.score - a.score);
     return allResults.slice(0, topK);
-  }
-
-  /**
-   * Expand a chunk result — retrieve neighboring chunks from the same
-   * parent document for context.
-   *
-   * When a query returns a chunked document fragment, the user often
-   * needs to see the surrounding context (before/after chunks) to
-   * understand the full meaning. This method fetches those neighbors.
-   *
-   * @param library  The library the chunk belongs to.
-   * @param parentDocId  The parent document ID (from `chunk.parentDocId`).
-   * @param options  Optional range control:
-   *   - `before`: number of preceding chunks (default 1)
-   *   - `after`: number of following chunks (default 1)
-   *
-   * @returns Array of chunk QueryResults sorted by chunkIndex, or empty
-   *   array if the library or parent document is not found.
-   */
-  async expandChunk(
-    library: string,
-    parentDocId: string,
-    options?: { before?: number; after?: number },
-  ): Promise<QueryResult[]> {
-    const store = this.storeManager.tryOpen(library);
-    if (!store) return [];
-
-    const before = options?.before ?? 1;
-    const after = options?.after ?? 1;
-
-    // Use a zero-vector search with a filter on parentDocId to retrieve
-    // all chunks of the parent document. The filter narrows results to
-    // the correct parent, and we sort by chunkIndex to find neighbors.
-    const zeroVector = new Array(this.embedder.dimensions).fill(0);
-    const allChunks = await store.search({
-      vector: zeroVector,
-      topK: 100, // generous limit — a single doc rarely has >100 chunks
-      filter: `parentDocId = '${parentDocId}'`,
-    });
-
-    if (allChunks.length === 0) return [];
-
-    // Sort by chunkIndex and parse into QueryResults
-    const parsed = allChunks
-      .map((result) => {
-        const chunkIndex = result.fields?.chunkIndex as number ?? -1;
-        return {
-          id: result.id,
-          content: String(result.fields?.content ?? ''),
-          score: result.score,
-          meta: safeParseMeta(result.fields?.meta as string | undefined),
-          sourceFilePath: result.fields?.sourceFilePath as string | undefined,
-          library,
-          chunk: {
-            chunkIndex,
-            totalChunks: result.fields?.totalChunks as number ?? 1,
-            parentDocId: result.fields?.parentDocId as string ?? parentDocId,
-            headingPath: (result.fields?.headingPath as string ?? '')
-              .split(' > ').filter(Boolean),
-          },
-          chunkIndex,
-        };
-      })
-      .sort((a, b) => a.chunkIndex - b.chunkIndex);
-
-    // Find the target chunk index and return the window around it
-    // If we don't know which chunk the user came from, return all chunks
-    return parsed.slice(0, parsed.length);
   }
 
   /**
