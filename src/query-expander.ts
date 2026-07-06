@@ -32,8 +32,22 @@ export interface QueryExpander {
 // SynonymExpander
 // ---------------------------------------------------------------------------
 
-/** Characters that delimit term boundaries in mixed CN/EN text. */
-const CJK_BOUNDARY_RE = /[\s一-鿿,，。]/;
+/**
+ * Characters that delimit word boundaries in Latin/script-based text.
+ * Does NOT include CJK characters — CJK text has no inter-word spacing,
+ * so substring matching is the correct strategy for CJK terms.
+ */
+const WORD_BOUNDARY_RE = /[\s,，。.!！?？;；:：\(\)\[\]{}""''\"\'\-_\/\\|@#$%^&*+=<>~`]/;
+
+/** Unicode range for CJK Unified Ideographs (basic block). */
+const CJK_CHAR_RE = /[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]/;
+
+/**
+ * Check whether a string contains any CJK character.
+ */
+function containsCJK(text: string): boolean {
+  return CJK_CHAR_RE.test(text);
+}
 
 /**
  * Expands query text by injecting synonym terms.
@@ -42,7 +56,10 @@ const CJK_BOUNDARY_RE = /[\s一-鿿,，。]/;
  * corresponding alternative terms are appended to the query. This bridges
  * CN↔EN terminology gaps and handles different naming conventions.
  *
- * The expander normalises case and preserves CJK characters for exact matching.
+ * Matching strategy:
+ *   - CJK terms: substring match (CJK text has no word boundaries)
+ *   - Latin terms: strict word-boundary match (avoids partial matches like
+ *     "line" matching inside "inline")
  */
 export class SynonymExpander implements QueryExpander {
   private readonly synonyms: Record<string, string[]>;
@@ -78,17 +95,36 @@ export class SynonymExpander implements QueryExpander {
   }
 
   /**
-   * Check if a term appears as a word/phrase boundary in the query.
-   * Handles both space-separated (EN) and character-joined (CJK) text.
+   * Check if a term appears in the text with appropriate boundary rules.
+   *
+   * - CJK terms use substring matching (no word boundaries in CJK text).
+   * - Latin terms use strict word-boundary detection to avoid false positives
+   *   (e.g. "line" should not match inside "inline" or "pipeline").
    */
   private containsTerm(text: string, term: string): boolean {
-    if (text.includes(term)) {
-      const idx = text.indexOf(term);
-      const prevOk = idx === 0 || CJK_BOUNDARY_RE.test(text[idx - 1]);
-      const afterIdx = idx + term.length;
-      const afterOk = afterIdx >= text.length || CJK_BOUNDARY_RE.test(text[afterIdx]);
-      return prevOk && afterOk;
+    if (!text.includes(term)) return false;
+
+    // CJK terms: substring match is sufficient and correct
+    if (containsCJK(term)) {
+      return true;
     }
+
+    // Latin terms: enforce word boundaries on both sides
+    let searchFrom = 0;
+    while (searchFrom <= text.length - term.length) {
+      const idx = text.indexOf(term, searchFrom);
+      if (idx === -1) return false;
+
+      const prevOk = idx === 0 || WORD_BOUNDARY_RE.test(text[idx - 1]);
+      const afterIdx = idx + term.length;
+      const afterOk = afterIdx >= text.length || WORD_BOUNDARY_RE.test(text[afterIdx]);
+
+      if (prevOk && afterOk) return true;
+
+      // Move past this occurrence to check subsequent ones
+      searchFrom = idx + 1;
+    }
+
     return false;
   }
 }

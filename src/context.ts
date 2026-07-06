@@ -56,7 +56,8 @@ export class Context {
       : null;
     // Reranker is created eagerly — it has no model-load cost (KeywordReranker).
     // In the future this may be lazy if a cross-encoder is used.
-    this.reranker = createReranker();
+    // Weights are configurable via ContextOptions.rerankWeights.
+    this.reranker = createReranker(options.rerankWeights);
     // Query expansion — uses user-provided synonym map only, no built-in defaults.
     // When queryExpansion is false, expansion is disabled entirely.
     // When queryExpansion is true/undefined/object without synonyms, SynonymExpander
@@ -403,6 +404,7 @@ export class Context {
             meta,
             sourceFilePath: result.fields?.sourceFilePath as string | undefined,
             library,
+            embedderKind: this._embedderInfo.kind,
           };
 
           // Attach chunk metadata when present (non-negative chunkIndex)

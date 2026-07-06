@@ -203,6 +203,35 @@ export interface ContextOptions {
    * Defaults to 60 (standard RRF default).
    */
   rankConstant?: number;
+
+  /**
+   * KeywordReranker scoring weights — tune for your domain.
+   *
+   * These weights control how the second-stage reranker scores candidates.
+   * See `RerankOptions` for available tuning parameters. When omitted,
+   * sensible defaults are used.
+   *
+   * Example: boost heading matches for API docs:
+   * ```ts
+   * rerankWeights: { headingTermBonus: 4.0, phraseWeight: 5.0 }
+   * ```
+   */
+  rerankWeights?: Omit<import('./reranker').RerankOptions, 'rerankFactor' | 'minCandidates'>;
+
+  /**
+   * Allow automatic fallback to in-memory store when @zvec/zvec is unavailable.
+   *
+   * When `true`, if @zvec/zvec cannot be loaded, the library will silently
+   * fall back to `MemoryZvecStore` (no persistence, vectors lost on restart).
+   * A warning is logged to console.
+   *
+   * When `false` (default), missing @zvec/zvec throws an error at store
+   * creation time, making the failure explicit.
+   *
+   * Useful for development/testing environments where native bindings
+   * may not be available.
+   */
+  allowMemoryFallback?: boolean;
 }
 
 /**
@@ -295,12 +324,22 @@ export interface QueryResult {
    */
   sourceFilePath?: string;
   /**
-   * The library this result came from.
+   * Which library this result came from.
    *
    * Useful when querying multiple libraries (`library: ['g2', 'f2']` or `'*'`)
-   * to distinguish which library contributed each result.
+   * to identify the source of each result.
    */
   library?: string;
+  /**
+   * The embedder kind used to produce the vectors for this result's store.
+   *
+   * - `'transformers'`: high-quality bilingual model (bge-small-zh-v1.5)
+   * - `'simple'`: lightweight fallback with lower recall quality
+   *
+   * Use this to detect when results come from a degraded embedder and
+   * warn users or trigger re-indexing with a better model.
+   */
+  embedderKind?: import('./embedder/resolve').EmbedderKind;
 }
 
 /**

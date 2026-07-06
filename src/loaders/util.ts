@@ -1,4 +1,5 @@
 import * as crypto from 'crypto';
+import * as path from 'path';
 
 /**
  * Convert a file path to a safe, collision-resistant ID for zvec.
@@ -7,11 +8,16 @@ import * as crypto from 'crypto';
  * Strategy: hash the full path to guarantee uniqueness and fit within the limit,
  * while appending a short readable suffix for debugging.
  *
+ * Cross-platform consistency: paths are normalized to forward slashes before
+ * hashing, so the same relative path produces the same ID on Windows, macOS,
+ * and Linux.
+ *
  * Example: "/long/path/getting-started.md" → "f3a1b2c4__getting_started"
  */
 export function pathToId(filePath: string): string {
-  // Normalize: remove leading slashes
-  const normalized = filePath.replace(/^\/+/, '');
+  // Normalize separators to forward slash for cross-platform consistency.
+  // Also collapse redundant segments (e.g. "a/../b" → "b") via path.normalize.
+  const normalized = path.normalize(filePath).replace(/\\/g, '/').replace(/^\/+/, '');
 
   // Generate a compact hash of the full path (16 hex chars = 64-bit)
   const hash = crypto.createHash('sha256').update(normalized).digest('hex').slice(0, 16);

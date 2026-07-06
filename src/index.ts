@@ -78,7 +78,3 @@ export { DocumentRegistry } from './registry';
 // StoreManager — zvec store lifecycle management
 export { StoreManager } from './store-manager';
 
-// Backward-compatible alias — remove() is now untrack()
-// Users should prefer untrack() + rebuild() for actual data removal.
-export type { ContextOptions as RemoveOptions } from './types';
-

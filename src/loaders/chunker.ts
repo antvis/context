@@ -222,13 +222,17 @@ export class FixedSizeChunker implements Chunker {
  *
  * Tries to break at paragraph boundaries (double newline) within a tolerance
  * of maxSize to avoid cutting sentences in half. Falls back to hard cut.
+ *
+ * Protects fenced code blocks (```) and pipe tables (|...|) from being
+ * split mid-structure — cut points are adjusted to land before or after
+ * these regions.
  */
 function fixedSizeSplit(
   text: string,
   maxSize: number,
   overlap: number,
 ): string[] {
-  const paragraphs = text.split(/\n\n+/);
+  const paragraphs = splitRespectingBlocks(text);
   const chunks: string[] = [];
   let current = '';
 
@@ -249,11 +253,11 @@ function fixedSizeSplit(
           : '';
         current = overlapPrefix + trimmed;
       } else {
-        // Single paragraph is larger than maxSize — force split
+        // Single paragraph/block is larger than maxSize — force split
+        // but still respect code block / table boundaries
         current = trimmed;
         while (current.length > maxSize) {
-          // Try to break at a sentence boundary (。.!?。！？\n)
-          let cutPoint = findBreakPoint(current, maxSize);
+          let cutPoint = findBreakPointSafe(current, maxSize);
           chunks.push(current.slice(0, cutPoint).trim());
           const suffix = current.slice(cutPoint).trim();
           current = overlap > 0 && suffix.length > 0
@@ -269,6 +273,163 @@ function fixedSizeSplit(
   }
 
   return chunks.length > 0 ? chunks : [text.trim()];
+}
+
+// ---------------------------------------------------------------------------
+// Block-aware splitting helpers
+// ---------------------------------------------------------------------------
+
+/** Regex matching the opening/closing of a fenced code block. */
+const FENCED_CODE_RE = /^(`{3,}|~{3,})/;
+
+/**
+ * Check whether a line is part of a pipe table row.
+ * Matches lines like `| col1 | col2 |` and separator rows `|---|---|`.
+ */
+function isTableRow(line: string): boolean {
+  const trimmed = line.trim();
+  return trimmed.startsWith('|') && trimmed.endsWith('|') && trimmed.length > 1;
+}
+
+/**
+ * Split text into logical units that respect fenced code blocks and tables.
+ *
+ * Each returned unit is either:
+ *   - A complete fenced code block (never split)
+ *   - A contiguous run of table rows (never split)
+ *   - A run of normal paragraphs separated by double newlines
+ *
+ * This ensures downstream fixed-size splitting never cuts inside a
+ * code block or table.
+ */
+function splitRespectingBlocks(text: string): string[] {
+  const lines = text.split('\n');
+  const units: string[] = [];
+  let buffer: string[] = [];
+  let inCodeBlock = false;
+  let codeFence = '';
+  let inTable = false;
+
+  function flushBuffer(): void {
+    if (buffer.length > 0) {
+      const content = buffer.join('\n').trim();
+      if (content.length > 0) {
+        units.push(content);
+      }
+      buffer = [];
+    }
+  }
+
+  for (const line of lines) {
+    // --- Fenced code block detection ---
+    const fenceMatch = line.match(FENCED_CODE_RE);
+    if (fenceMatch) {
+      if (!inCodeBlock) {
+        // Entering code block — flush any preceding normal content
+        flushBuffer();
+        inCodeBlock = true;
+        codeFence = fenceMatch[1].charAt(0); // ` or ~
+        buffer.push(line);
+      } else if (line.trimStart().startsWith(codeFence.repeat(codeFence.length)) && line.trim().length <= codeFence.length + 1) {
+        // Closing fence — end of code block
+        buffer.push(line);
+        flushBuffer(); // emit the complete code block as one unit
+        inCodeBlock = false;
+        codeFence = '';
+      } else {
+        // Inside code block
+        buffer.push(line);
+      }
+      continue;
+    }
+
+    if (inCodeBlock) {
+      buffer.push(line);
+      continue;
+    }
+
+    // --- Table row detection ---
+    if (isTableRow(line)) {
+      if (!inTable) {
+        // Entering table — flush preceding normal content
+        flushBuffer();
+        inTable = true;
+      }
+      buffer.push(line);
+      continue;
+    }
+
+    // Not a table row
+    if (inTable) {
+      // Exiting table — flush the complete table as one unit
+      flushBuffer();
+      inTable = false;
+    }
+
+    // Normal line — accumulate; double-newline splits are handled
+    // by the paragraph-level logic below via empty-line detection
+    buffer.push(line);
+  }
+
+  // Flush any remaining content
+  flushBuffer();
+
+  // Post-process: further split normal units on double-newlines so that
+  // the paragraph-level sliding window works correctly. Code blocks and
+  // tables remain as single units.
+  const result: string[] = [];
+  for (const unit of units) {
+    if (FENCED_CODE_RE.test(unit.split('\n')[0] ?? '') || isTableRow(unit.split('\n')[0] ?? '')) {
+      // Protected block — keep as-is
+      result.push(unit);
+    } else {
+      // Normal text — split on paragraph boundaries
+      const paras = unit.split(/\n\n+/).map((p) => p.trim()).filter((p) => p.length > 0);
+      result.push(...paras);
+    }
+  }
+
+  return result.length > 0 ? result : [text.trim()];
+}
+
+/**
+ * Find a safe break point that avoids cutting inside code blocks or tables.
+ *
+ * Delegates to findBreakPoint for natural break detection, then adjusts
+ * the result if it lands inside a protected region.
+ */
+function findBreakPointSafe(text: string, maxSize: number): number {
+  const candidate = findBreakPoint(text, maxSize);
+
+  // Check if the candidate falls inside a fenced code block
+  const beforeCut = text.slice(0, candidate);
+  const fenceOpens = (beforeCut.match(/^(`{3,}|~{3,})/gm) ?? []).length;
+  const fenceCloses = (beforeCut.match(/^(`{3,}|~{3,})\s*$/gm) ?? []).length;
+
+  if (fenceOpens > fenceCloses) {
+    // Inside an unclosed code block — move cut point backward to before the fence
+    const lastOpenIdx = beforeCut.lastIndexOf('\n```');
+    const lastOpenTilde = beforeCut.lastIndexOf('\n~~~');
+    const safePoint = Math.max(lastOpenIdx, lastOpenTilde);
+    if (safePoint > 0) return safePoint;
+  }
+
+  // Check if the candidate falls inside a table
+  const linesBeforeCut = beforeCut.split('\n');
+  const lastLine = linesBeforeCut[linesBeforeCut.length - 1] ?? '';
+  if (isTableRow(lastLine)) {
+    // Move backward to before the table started
+    for (let i = linesBeforeCut.length - 1; i >= 0; i--) {
+      if (!isTableRow(linesBeforeCut[i])) {
+        // Found the line before the table — compute its offset
+        const offset = linesBeforeCut.slice(0, i + 1).join('\n').length + 1;
+        if (offset > 0) return offset;
+        break;
+      }
+    }
+  }
+
+  return candidate;
 }
 
 /**

@@ -49,6 +49,27 @@ export interface RerankOptions {
    * Default: 10
    */
   minCandidates?: number;
+
+  // -----------------------------------------------------------------------
+  // KeywordReranker scoring weights — tune for your domain
+  // -----------------------------------------------------------------------
+
+  /** Weight for exact phrase match. Default: 3.0 */
+  phraseWeight?: number;
+  /** Bonus per additional phrase occurrence beyond the first. Default: 0.5 */
+  phraseRepeatBonus?: number;
+  /** Weight for whole-word term match. Default: 1.0 */
+  termWeight?: number;
+  /** Bonus per additional term occurrence beyond the first. Default: 0.2 */
+  termRepeatBonus?: number;
+  /** Weight for substring (partial) term match. Default: 0.3 */
+  substringWeight?: number;
+  /** Bonus when a query term appears in the heading path. Default: 2.0 */
+  headingTermBonus?: number;
+  /** Bonus when the full query phrase appears in the heading path. Default: 2.5 */
+  headingPhraseBonus?: number;
+  /** Fraction of the original coarse score carried into the reranked score. Default: 0.1 */
+  originalScoreCarry?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -57,6 +78,18 @@ export interface RerankOptions {
 
 const DEFAULT_RERANK_FACTOR = 3;
 const DEFAULT_MIN_CANDIDATES = 10;
+
+/** Default scoring weights for KeywordReranker. */
+const DEFAULT_WEIGHTS = {
+  phraseWeight: 3.0,
+  phraseRepeatBonus: 0.5,
+  termWeight: 1.0,
+  termRepeatBonus: 0.2,
+  substringWeight: 0.3,
+  headingTermBonus: 2.0,
+  headingPhraseBonus: 2.5,
+  originalScoreCarry: 0.1,
+} as const;
 
 // ---------------------------------------------------------------------------
 // KeywordReranker — lexical overlap scoring
@@ -69,22 +102,34 @@ const DEFAULT_MIN_CANDIDATES = 10;
  * embedding stage captures semantic closeness, while this reranker boosts
  * candidates that contain the exact query terms (or their substrings).
  *
- * Scoring factors:
- *   - Exact phrase match:    3.0× weight
- *   - Whole term match:      1.0× weight (per term)
- *   - Substring match:       0.3× weight (partial token overlap)
- *   - Heading match:         2.0× bonus (terms appearing in heading path)
- *   - Original score:        0.1× carry-over (respects the coarse rank)
+ * All scoring weights are configurable via constructor options. See
+ * `RerankOptions` for available tuning parameters.
  *
- * All scores are normalised to [0, 1] via min-max scaling.
+ * Scores are normalised to [0, 1] via min-max scaling.
  */
 export class KeywordReranker implements Reranker {
+  private readonly weights: typeof DEFAULT_WEIGHTS;
+
+  constructor(options?: RerankOptions) {
+    this.weights = {
+      phraseWeight: options?.phraseWeight ?? DEFAULT_WEIGHTS.phraseWeight,
+      phraseRepeatBonus: options?.phraseRepeatBonus ?? DEFAULT_WEIGHTS.phraseRepeatBonus,
+      termWeight: options?.termWeight ?? DEFAULT_WEIGHTS.termWeight,
+      termRepeatBonus: options?.termRepeatBonus ?? DEFAULT_WEIGHTS.termRepeatBonus,
+      substringWeight: options?.substringWeight ?? DEFAULT_WEIGHTS.substringWeight,
+      headingTermBonus: options?.headingTermBonus ?? DEFAULT_WEIGHTS.headingTermBonus,
+      headingPhraseBonus: options?.headingPhraseBonus ?? DEFAULT_WEIGHTS.headingPhraseBonus,
+      originalScoreCarry: options?.originalScoreCarry ?? DEFAULT_WEIGHTS.originalScoreCarry,
+    };
+  }
+
   async rerank(query: string, candidates: RerankCandidate[]): Promise<RerankResult[]> {
     if (candidates.length === 0) return [];
 
     const queryLower = query.toLowerCase();
     const queryTerms = tokenizeQuery(queryLower);
     const queryPhrase = queryLower.trim();
+    const w = this.weights;
 
     const scored = candidates.map((c) => {
       const contentLower = c.content.toLowerCase();
@@ -92,10 +137,10 @@ export class KeywordReranker implements Reranker {
 
       // 1. Exact phrase match — strongest signal
       if (contentLower.includes(queryPhrase)) {
-        score += 3.0;
+        score += w.phraseWeight;
         // Bonus for each additional occurrence
         const phraseCount = countOccurrences(contentLower, queryPhrase);
-        score += (phraseCount - 1) * 0.5;
+        score += (phraseCount - 1) * w.phraseRepeatBonus;
       }
 
       // 2. Per-term matching
@@ -103,12 +148,12 @@ export class KeywordReranker implements Reranker {
         if (contentLower.includes(term)) {
           // Whole word match
           if (isWordBoundary(contentLower, term)) {
-            score += 1.0;
+            score += w.termWeight;
             const termCount = countTermMatches(contentLower, term);
-            score += (termCount - 1) * 0.2;
+            score += (termCount - 1) * w.termRepeatBonus;
           } else {
             // Substring match (e.g. "tool" matches "tooltip")
-            score += 0.3;
+            score += w.substringWeight;
           }
         }
       }
@@ -118,16 +163,16 @@ export class KeywordReranker implements Reranker {
         const headingLower = c.headingPath.toLowerCase();
         for (const term of queryTerms) {
           if (headingLower.includes(term)) {
-            score += 2.0;
+            score += w.headingTermBonus;
           }
         }
         if (queryPhrase.length > 2 && headingLower.includes(queryPhrase)) {
-          score += 2.5;
+          score += w.headingPhraseBonus;
         }
       }
 
       // 4. Carry over a fraction of the original vector score
-      score += c.score * 0.1;
+      score += c.score * w.originalScoreCarry;
 
       return { id: c.id, score };
     });
@@ -213,11 +258,11 @@ function isWordBoundary(
 // ---------------------------------------------------------------------------
 
 /**
- * Create the default reranker.
+ * Create a reranker with optional weight configuration.
  *
  * Currently returns KeywordReranker. In the future this may auto-select
  * based on available models (cross-encoder, etc.).
  */
-export function createReranker(): Reranker {
-  return new KeywordReranker();
+export function createReranker(options?: RerankOptions): Reranker {
+  return new KeywordReranker(options);
 }

@@ -41,15 +41,83 @@ interface TransformersOutput {
 // Module loading
 // ---------------------------------------------------------------------------
 
+/**
+ * Internal module cache — shared across all instances by default.
+ *
+ * Node.js `import()` already caches ESM modules, so this additional cache
+ * avoids repeated async overhead and failure-tracking logic. The cache is
+ * module-level because the underlying native/WASM module can only be loaded
+ * once per process; multiple Context instances correctly share it.
+ *
+ * For test isolation, use `createTransformersLoader()` to get an independent
+ * loader with its own cache, or call `resetTransformersModule()` between tests.
+ */
 let _transformersModule: TransformersModule | undefined;
 let _transformersLoadFailed = false;
 let _transformersLoadFailedAt = 0;
 
 /**
+ * A self-contained transformers module loader with its own cache.
+ *
+ * Use this when you need instance-level isolation (e.g. tests, multi-tenant
+ * servers). Each loader maintains independent failure tracking and retry state.
+ */
+export interface TransformersLoader {
+  load(): Promise<TransformersModule | undefined>;
+  reset(): void;
+}
+
+/**
+ * Create an independent transformers module loader.
+ *
+ * The returned loader has its own cache and failure state, completely
+ * isolated from the global `loadTransformersModule()` / `resetTransformersModule()`.
+ */
+export function createTransformersLoader(): TransformersLoader {
+  let localModule: TransformersModule | undefined;
+  let localFailed = false;
+  let localFailedAt = 0;
+
+  return {
+    async load(): Promise<TransformersModule | undefined> {
+      if (localModule) return localModule;
+
+      if (localFailed) {
+        const elapsed = Date.now() - localFailedAt;
+        if (elapsed < TRANSFORMERS_RETRY_COOLDOWN_MS) return undefined;
+        localFailed = false;
+      }
+
+      try {
+        const mod = await import('@huggingface/transformers');
+        localModule = mod as TransformersModule;
+      } catch {
+        localFailed = true;
+        localFailedAt = Date.now();
+        return undefined;
+      }
+
+      const hfEndpoint = process.env.HF_ENDPOINT;
+      if (hfEndpoint && localModule?.env) {
+        localModule.env.remoteHost = hfEndpoint;
+      }
+
+      return localModule;
+    },
+
+    reset(): void {
+      localModule = undefined;
+      localFailed = false;
+      localFailedAt = 0;
+    },
+  };
+}
+
+/**
  * Load the @huggingface/transformers module with TTL-based retry.
  *
- * This function is used by EmbedderManager but also available standalone
- * for direct TransformersEmbedder construction.
+ * Uses the shared module-level cache. For instance-level isolation,
+ * use `createTransformersLoader()` instead.
  */
 export async function loadTransformersModule(): Promise<TransformersModule | undefined> {
   if (_transformersModule) return _transformersModule;
@@ -87,7 +155,7 @@ export async function loadTransformersModule(): Promise<TransformersModule | und
   return _transformersModule;
 }
 
-/** Reset the transformers module cache (for tests / EmbedderManager.reset). */
+/** Reset the shared transformers module cache (for tests). */
 export function resetTransformersModule(): void {
   _transformersModule = undefined;
   _transformersLoadFailed = false;

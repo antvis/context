@@ -3,8 +3,10 @@ import * as path from 'path';
 import {
   createZvecStore,
   openZvecStoreSync,
+  isZvecAvailable,
 } from './storage/zvec-store';
 import type { IZvecStore, ZvecStoreConfig, FtsFieldWeight, ActualZvecStoreOptions } from './storage/zvec-store';
+import { MemoryZvecStore } from './storage/memory-store';
 import type { Embedder } from './embedder';
 import { detectTokenizer } from './embedder';
 import type { ContextOptions } from './types';
@@ -156,14 +158,47 @@ export class StoreManager {
 
   private async _doGetOrCreate(library: string, sampleText?: string): Promise<IZvecStore> {
     const filePath = this.getStorePath(library);
-    return fs.existsSync(filePath)
-      ? openZvecStoreSync(filePath, storeOpenOptions(this.contextOptions))
-      : await createZvecStore(
-          filePath,
-          contextStoreConfig(this.embedder.dimensions, this.contextOptions, sampleText),
-          this.ftsWeights,
-          this.rankConstant,
+    const allowFallback = this.contextOptions?.allowMemoryFallback ?? false;
+
+    if (fs.existsSync(filePath)) {
+      // Existing store on disk — try to open with zvec
+      if (isZvecAvailable()) {
+        return openZvecStoreSync(filePath, storeOpenOptions(this.contextOptions));
+      }
+      // zvec unavailable for existing store
+      if (allowFallback) {
+        console.warn(
+          `[context] @zvec/zvec not available — opening library "${library}" ` +
+          `with in-memory MemoryZvecStore. Data will NOT be persisted.`
         );
+        return new MemoryZvecStore(this.ftsWeights, this.rankConstant);
+      }
+      throw new Error(
+        `Cannot open existing store "${filePath}": @zvec/zvec is not installed. ` +
+        `Install it with: pnpm add @zvec/zvec\n` +
+        `Or set allowMemoryFallback: true to use in-memory store (no persistence).`
+      );
+    }
+
+    // New store — createZvecStore already handles fallback internally
+    try {
+      return await createZvecStore(
+        filePath,
+        contextStoreConfig(this.embedder.dimensions, this.contextOptions, sampleText),
+        this.ftsWeights,
+        this.rankConstant,
+      );
+    } catch (err) {
+      if (allowFallback) {
+        console.warn(
+          `[context] Store creation failed for library "${library}", ` +
+          `falling back to in-memory MemoryZvecStore. ` +
+          `Error: ${(err as Error).message?.split('\n')[0]}`
+        );
+        return new MemoryZvecStore(this.ftsWeights, this.rankConstant);
+      }
+      throw err;
+    }
   }
 
   /**

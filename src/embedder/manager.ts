@@ -1,22 +1,62 @@
 /**
- * EmbedderManager — encapsulates module-level state for embedder resolution.
+ * EmbedderManager — encapsulates embedder resolution and lifecycle.
  *
- * Previously the transformers module cache, failure tracking, and default
- * embedder singleton were scattered as loose module-level variables.  This
- * class consolidates them into a single object so each Context instance can
- * manage its own lifecycle without hidden global side-effects.
+ * Each instance maintains its own embedder cache and (optionally) its own
+ * transformers module loader, enabling true instance-level isolation for
+ * multi-tenant servers and test environments.
  */
 
 import { Embedder } from './types';
 import { SimpleEmbedder } from './simple';
-import { TransformersEmbedder, loadTransformersModule, resetTransformersModule } from './transformers';
+import {
+  TransformersEmbedder,
+  loadTransformersModule,
+  resetTransformersModule,
+  createTransformersLoader,
+} from './transformers';
+import type { TransformersLoader } from './transformers';
 
 // ---------------------------------------------------------------------------
 // EmbedderManager
 // ---------------------------------------------------------------------------
 
+export interface EmbedderManagerOptions {
+  /**
+   * Custom transformers module loader for instance-level isolation.
+   * When omitted, uses the shared global loader (backward-compatible).
+   */
+  transformersLoader?: TransformersLoader;
+}
+
 export class EmbedderManager {
   private _defaultEmbedder: Embedder | null = null;
+  private readonly _loader: TransformersLoader;
+  private readonly _ownsLoader: boolean;
+
+  constructor(options?: EmbedderManagerOptions) {
+    if (options?.transformersLoader) {
+      this._loader = options.transformersLoader;
+      this._ownsLoader = false;
+    } else {
+      // Default: use global shared loader (backward-compatible)
+      this._loader = {
+        load: loadTransformersModule,
+        reset: resetTransformersModule,
+      };
+      this._ownsLoader = false;
+    }
+  }
+
+  /**
+   * Create an EmbedderManager with a fully isolated transformers loader.
+   *
+   * The returned manager has its own module cache and failure state,
+   * completely independent of other managers and the global state.
+   */
+  static createIsolated(): EmbedderManager {
+    const loader = createTransformersLoader();
+    return new EmbedderManager({ transformersLoader: loader });
+  }
 
   /**
    * Return a shared Embedder instance (async).
@@ -28,10 +68,10 @@ export class EmbedderManager {
   async getEmbedder(synonymMap?: Map<string, string[]>): Promise<Embedder> {
     if (this._defaultEmbedder) return this._defaultEmbedder;
 
-    const t = await loadTransformersModule();
+    const t = await this._loader.load();
     if (t) {
       try {
-        const probe = new TransformersEmbedder();
+        const probe = new TransformersEmbedder(() => this._loader.load());
         await probe.embed('probe'); // triggers lazy model download
         this._defaultEmbedder = probe;
       } catch (err) {
@@ -59,10 +99,13 @@ export class EmbedderManager {
 
   /**
    * Force-reset all cached state (useful for tests).
+   *
+   * Only resets the owned loader if this manager was created via
+   * `createIsolated()`. Global-loader managers delegate to the shared reset.
    */
   reset(): void {
     this._defaultEmbedder = null;
-    resetTransformersModule();
+    this._loader.reset();
   }
 }
 
