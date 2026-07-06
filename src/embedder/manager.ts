@@ -7,7 +7,6 @@
  */
 
 import { Embedder } from './types';
-import { SimpleEmbedder } from './simple';
 import {
   TransformersEmbedder,
   loadTransformersModule,
@@ -61,38 +60,36 @@ export class EmbedderManager {
   /**
    * Return a shared Embedder instance (async).
    *
-   * Tries TransformersEmbedder first (needs @huggingface/transformers installed
-   * AND the model downloadable from HuggingFace Hub). If either fails, falls
-   * back to SimpleEmbedder gracefully.
+   * Requires @huggingface/transformers to be installed and the model to be
+   * loadable. Throws an error when either condition is not met.
    */
-  async getEmbedder(synonymMap?: Map<string, string[]>): Promise<Embedder> {
+  async getEmbedder(): Promise<Embedder> {
     if (this._defaultEmbedder) return this._defaultEmbedder;
 
     const t = await this._loader.load();
-    if (t) {
-      try {
-        const probe = new TransformersEmbedder(() => this._loader.load());
-        await probe.embed('probe'); // triggers lazy model download
-        this._defaultEmbedder = probe;
-      } catch (err) {
-        console.warn(
-          `[embedder] Bilingual model (bge-small-zh-v1.5) load failed, falling back to SimpleEmbedder.\n` +
-          `  Error: ${(err as Error).message?.split('\n')[0]}\n` +
-          `\n` +
-          `  SimpleEmbedder has lower recall quality. To fix model download:\n` +
-          `    1. Set mirror: export HF_ENDPOINT=https://hf-mirror.com\n` +
-          `    2. Manual download: node scripts/download-model.mjs\n`
-        );
-        this._defaultEmbedder = new SimpleEmbedder(synonymMap);
-      }
-    } else {
-      console.warn(
-        '[embedder] @huggingface/transformers not installed, using SimpleEmbedder.\n' +
-        '  Install it to enable bilingual model for better recall:\n' +
+    if (!t) {
+      throw new Error(
+        '@huggingface/transformers is not installed. Semantic search requires a model-based embedder.\n' +
+        '  Install it with:\n' +
         '    npm install @huggingface/transformers\n' +
-        '    node scripts/download-model.mjs\n'
+        '  Then download the model:\n' +
+        '    node scripts/download-model.mjs\n' +
+        '  Or set mirror for China:\n' +
+        '    export HF_ENDPOINT=https://hf-mirror.com'
       );
-      this._defaultEmbedder = new SimpleEmbedder(synonymMap);
+    }
+
+    try {
+      const probe = new TransformersEmbedder(() => this._loader.load());
+      await probe.embed('probe');
+      this._defaultEmbedder = probe;
+    } catch (err) {
+      throw new Error(
+        `Failed to load embedding model (bge-small-zh-v1.5): ${(err as Error).message?.split('\n')[0] ?? 'unknown'}\n` +
+        '  To fix model download:\n' +
+        '    1. Set mirror: export HF_ENDPOINT=https://hf-mirror.com\n' +
+        '    2. Manual download: node scripts/download-model.mjs'
+      );
     }
     return this._defaultEmbedder;
   }
@@ -123,10 +120,9 @@ const _globalManager = new EmbedderManager();
  *   explicit embedder to `Context.create({ embedder })` to avoid hidden
  *   global state. This function remains for backward compatibility.
  *
- * @param synonymMap Optional synonym map to inject into SimpleEmbedder fallback.
  */
-export async function getEmbedder(synonymMap?: Map<string, string[]>): Promise<Embedder> {
-  return _globalManager.getEmbedder(synonymMap);
+export async function getEmbedder(): Promise<Embedder> {
+  return _globalManager.getEmbedder();
 }
 
 /**

@@ -14,7 +14,7 @@ A local context retrieval library that enables semantic search over your documen
 - 🔍 **Hybrid Retrieval**: Combines vector similarity + FTS text matching via RRF fusion for better recall
 - 🔄 **Deduplication**: Automatically skip already-loaded documents; content-hash change detection for re-embedding updated files
 - ⚖️ **Weight Configuration**: Per-field FTS boost weights and RRF rank constant tuning
-- 🛡️ **Graceful Degradation**: Falls back to SimpleEmbedder when Transformers model unavailable
+- 🛡️ **Clear Error Messages**: Throws descriptive errors when Transformers model is unavailable, guiding users to fix the issue
 - 🧩 **Document Chunking**: Split documents into semantic chunks (heading-aware for Markdown, fixed-size for plain text) for finer-grained retrieval
 - 🔁 **Two-stage Reranking**: KeywordReranker boosts candidates with exact query term matches after coarse vector/hybrid search
 - 🌐 **Query Expansion**: SynonymExpander uses user-provided synonym maps to bridge CN↔EN terminology gaps
@@ -79,7 +79,6 @@ await ctx.close();
 | `model` | `string` | auto | Transformers model name for embedding. Skipped when custom `embedder` is provided. |
 | `loaders` | `Loader[]` | built-in | Custom loaders (default: MarkdownLoader, JsonLoader, TextLoader) |
 | `embedder` | `Embedder` | auto-resolved | Custom embedder. Skips auto-resolution when provided. |
-| `onEmbedderFallback` | `(info: EmbedderInfo) => void` | — | Callback invoked when the embedder falls back to SimpleEmbedder. |
 | `onProgress` | `(phase, detail) => void` | — | Progress callback for `load()` phases: `'load'` → `'chunk'` → `'embed'` → `'insert'`. |
 | `chunking` | `ChunkingOptions | false` | `{ strategy: 'auto', maxChunkSize: 1024, chunkOverlap: 128 }` | Document chunking config. `false` disables chunking. |
 | `queryExpansion` | `QueryExpansionOptions | false` | `false` (no-op) | Query expansion with user-provided synonym map. `false` disables. Without `synonyms`, expansion is a no-op. |
@@ -356,7 +355,7 @@ await ctx.close();
 - **Chunking**: `MarkdownChunker`, `FixedSizeChunker`, `createChunker`, `ChunkingOptions`, `Chunk`, `Chunker`
 - **Reranking**: `KeywordReranker`, `createReranker`, `Reranker`, `RerankCandidate`, `RerankResult`, `RerankOptions`
 - **Query Expansion**: `SynonymExpander`, `NoopExpander`, `QueryExpander`, `QueryExpansionOptions`
-- **Advanced API**: `Embedder`, `SimpleEmbedder`, `TransformersEmbedder`, `EmbedderManager`, `IZvecStore`, `MemoryZvecStore`, `ActualZvecStore`, `DocumentRegistry`, `StoreManager`
+- **Advanced API**: `Embedder`, `TransformersEmbedder`, `EmbedderManager`, `IZvecStore`, `MemoryZvecStore`, `ActualZvecStore`, `DocumentRegistry`, `StoreManager`
 
 
 ## License

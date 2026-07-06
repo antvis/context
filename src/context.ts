@@ -77,22 +77,15 @@ export class Context {
 
     if (options.embedder) {
       // User provided a custom embedder — infer info from its class
-      const isTransformers = options.embedder.constructor.name === 'TransformersEmbedder';
       embedder = options.embedder;
       embedderInfo = {
-        kind: isTransformers ? 'transformers' : 'simple',
+        kind: 'transformers',
         dimensions: embedder.dimensions,
-        isFallback: false,
       };
     } else {
       const result = await resolveEmbedder(options.model);
       embedder = result.embedder;
       embedderInfo = result.info;
-
-      // Notify user if a fallback occurred (via callback if provided)
-      if (embedderInfo.isFallback && options.onEmbedderFallback) {
-        options.onEmbedderFallback(embedderInfo);
-      }
     }
 
     // Ensure vectors directory exists
@@ -142,17 +135,6 @@ export class Context {
 
   /**
    * Diagnostic information about the active embedder.
-   *
-   * Use this to detect when a fallback to SimpleEmbedder occurred, so
-   * you can warn your users or log the event for troubleshooting.
-   *
-   * Example:
-   * ```ts
-   * const ctx = await Context.create({ vectorsDir: './vectors' });
-   * if (ctx.embedderInfo.isFallback) {
-   *   console.warn(`Using fallback embedder: ${ctx.embedderInfo.fallbackReason}`);
-   * }
-   * ```
    */
   get embedderInfo(): EmbedderInfo {
     return this._embedderInfo;

@@ -91,29 +91,10 @@ export interface ContextOptions {
   loaders?: import('./loaders').Loader[];
   /**
    * Custom embedder instance. When provided, skips the auto-resolution
-   * logic and uses this embedder directly. Useful for tests or when you
+   * logic and uses this embedder directly. Useful for when you
    * have a pre-initialized embedder.
    */
   embedder?: import('./embedder').Embedder;
-
-  /**
-   * Callback invoked when the embedder resolution falls back to
-   * SimpleEmbedder (lower recall quality).
-   *
-   * Use this to alert users, log diagnostics, or trigger a retry later.
-   * Not called when a custom `embedder` is provided.
-   *
-   * Example:
-   * ```ts
-   * const ctx = await Context.create({
-   *   vectorsDir: './vectors',
-   *   onEmbedderFallback: (info) => {
-   *     console.warn(`Embedder fallback: ${info.fallbackReason}`);
-   *   },
-   * });
-   * ```
-   */
-  onEmbedderFallback?: (info: import('./embedder/resolve').EmbedderInfo) => void;
 
   /**
    * Progress callback for `load()` — called after each major phase completes.
@@ -334,10 +315,6 @@ export interface QueryResult {
    * The embedder kind used to produce the vectors for this result's store.
    *
    * - `'transformers'`: high-quality bilingual model (bge-small-zh-v1.5)
-   * - `'simple'`: lightweight fallback with lower recall quality
-   *
-   * Use this to detect when results come from a degraded embedder and
-   * warn users or trigger re-indexing with a better model.
    */
   embedderKind?: import('./embedder/resolve').EmbedderKind;
 }

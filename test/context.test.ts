@@ -2,13 +2,15 @@ import { describe, it, expect, afterAll, beforeAll } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import { Context } from '../src/index';
-import { SimpleEmbedder } from '../src/embedder';
+import { TransformersEmbedder } from '../src/embedder';
 
 const FIXTURES_DIR = path.join(__dirname, 'fixtures/docs');
 const TEST_DIR = path.join(__dirname, '.test-tmp');
 
-// Use SimpleEmbedder for fast unit tests — no model download needed.
-const testEmbedder = new SimpleEmbedder();
+// Use TransformersEmbedder for tests — requires model download.
+// For faster local testing without model download, provide a custom
+// embedder mock via the embedder option.
+const testEmbedder = new TransformersEmbedder();
 
 describe('Context', () => {
   let ctx: Context;
