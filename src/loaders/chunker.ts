@@ -44,9 +44,15 @@ export interface ChunkingOptions {
   strategy?: 'markdown' | 'fixed' | 'auto';
 }
 
+/** A document with a guaranteed ID — used by chunkers.
+ * Context.load() always assigns id via pathToId before chunking. */
+export interface ChunkableDocument extends Document {
+  id: string;
+}
+
 /** Chunker interface — custom chunkers can implement this. */
 export interface Chunker {
-  chunk(doc: Document): Chunk[];
+  chunk(doc: ChunkableDocument): Chunk[];
 }
 
 // ---------------------------------------------------------------------------
@@ -77,7 +83,7 @@ export class MarkdownChunker implements Chunker {
     this.chunkOverlap = opts.chunkOverlap;
   }
 
-  chunk(doc: Document): Chunk[] {
+  chunk(doc: ChunkableDocument): Chunk[] {
     return chunkMarkdown(doc, this.maxChunkSize, this.chunkOverlap);
   }
 }
@@ -87,7 +93,7 @@ export class MarkdownChunker implements Chunker {
  * sections that exceed maxChunkSize with a fixed-size sliding window.
  */
 function chunkMarkdown(
-  doc: Document,
+  doc: ChunkableDocument,
   maxChunkSize: number,
   overlap: number,
 ): Chunk[] {
@@ -205,7 +211,7 @@ export class FixedSizeChunker implements Chunker {
     this.chunkOverlap = opts.chunkOverlap;
   }
 
-  chunk(doc: Document): Chunk[] {
+  chunk(doc: ChunkableDocument): Chunk[] {
     const parts = fixedSizeSplit(doc.content, this.maxChunkSize, this.chunkOverlap);
     return parts.map((content, i) => ({
       content,
@@ -505,7 +511,7 @@ class AutoChunker implements Chunker {
     this.fixed = new FixedSizeChunker(options);
   }
 
-  chunk(doc: Document): Chunk[] {
+  chunk(doc: ChunkableDocument): Chunk[] {
     // If the document content contains markdown headings (## or ###), use
     // heading-aware chunking; otherwise fall back to fixed-size splits.
     if (/^#{1,3}\s+\S/m.test(doc.content)) {

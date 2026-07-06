@@ -13,9 +13,9 @@ describe('Loaders', () => {
       const filePath = path.join(FIXTURES_DIR, 'getting-started.md');
       const doc = await loader.load(filePath);
 
-      // Loader returns the file path as a temporary ID — the canonical
-      // hash-based ID is assigned by Context.load() for cross-machine consistency.
-      expect(doc.id).toBe(filePath);
+      // Loader does not assign id — the canonical hash-based ID is
+      // assigned by Context.load() for cross-machine consistency.
+      expect(doc.id).toBeUndefined();
       expect(doc.content).toContain('Getting Started');
       expect(doc.content).toContain('npm install');
       expect(doc.meta).toEqual({
@@ -38,7 +38,7 @@ describe('Loaders', () => {
       const filePath = path.join(FIXTURES_DIR, 'api.json');
       const doc = await loader.load(filePath);
 
-      expect(doc.id).toBe(filePath);
+      expect(doc.id).toBeUndefined();
       expect(doc.content).toContain('API Reference');
       expect(doc.content).toContain('/users');
     });
@@ -56,7 +56,7 @@ describe('Loaders', () => {
       const filePath = path.join(FIXTURES_DIR, 'notes.txt');
       const doc = await loader.load(filePath);
 
-      expect(doc.id).toBe(filePath);
+      expect(doc.id).toBeUndefined();
       expect(doc.content).toContain('notes');
     });
 

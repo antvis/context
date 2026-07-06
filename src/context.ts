@@ -220,9 +220,10 @@ export class Context {
       })
     );
 
-    // Internal type that extends Document with load-phase metadata
-    // not stored in the Document interface itself.
+    // Internal type that extends Document with load-phase metadata.
+    // id is required here — Context.load() always assigns it via pathToId.
     interface LoadedDoc extends Document {
+      id: string; // override optional Document.id → required
       contentHash?: string;
       sourceFilePath?: string;
     }

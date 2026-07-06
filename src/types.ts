@@ -2,8 +2,10 @@
  * Document structure
  */
 export interface Document {
-  /** Document unique identifier (default: file path) */
-  id: string;
+  /** Document unique identifier — assigned by Context.load() (hash-based).
+   * Not set by Loaders; Context.load() derives it from the file path
+   * relative to basePath for cross-machine consistency. */
+  id?: string;
   /** Document content */
   content: string;
   /** Markdown front-matter metadata */
