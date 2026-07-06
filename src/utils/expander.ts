@@ -8,9 +8,6 @@
  *
  * Synonyms are entirely user-provided — no built-in defaults. Pass your
  * own map to `SynonymExpander` to define domain-specific term bridges.
- *
- * Example (with a custom synonym map):
- *   { "tooltip": ["提示框", "hover"] } → "tooltip config 提示框 hover 配置"
  */
 
 // ---------------------------------------------------------------------------
@@ -72,14 +69,11 @@ export class SynonymExpander implements QueryExpander {
     const queryLower = query.toLowerCase().trim();
     const additions = new Set<string>();
 
-    // Find matching synonym entries in the query
     for (const [term, syns] of Object.entries(this.synonyms)) {
       const termLower = term.toLowerCase();
 
-      // Exact match (whole term exists in query)
       if (this.containsTerm(queryLower, termLower)) {
         for (const syn of syns) {
-          // Don't add synonyms that are already in the query
           if (!this.containsTerm(queryLower, syn.toLowerCase())) {
             additions.add(syn);
           }
@@ -89,8 +83,6 @@ export class SynonymExpander implements QueryExpander {
 
     if (additions.size === 0) return query;
 
-    // Append additions — space-separated keeps compatibility with both
-    // embedding models and FTS tokenizers.
     return `${query} ${[...additions].join(' ')}`;
   }
 
@@ -98,18 +90,15 @@ export class SynonymExpander implements QueryExpander {
    * Check if a term appears in the text with appropriate boundary rules.
    *
    * - CJK terms use substring matching (no word boundaries in CJK text).
-   * - Latin terms use strict word-boundary detection to avoid false positives
-   *   (e.g. "line" should not match inside "inline" or "pipeline").
+   * - Latin terms use strict word-boundary detection to avoid false positives.
    */
   private containsTerm(text: string, term: string): boolean {
     if (!text.includes(term)) return false;
 
-    // CJK terms: substring match is sufficient and correct
     if (containsCJK(term)) {
       return true;
     }
 
-    // Latin terms: enforce word boundaries on both sides
     let searchFrom = 0;
     while (searchFrom <= text.length - term.length) {
       const idx = text.indexOf(term, searchFrom);
@@ -121,7 +110,6 @@ export class SynonymExpander implements QueryExpander {
 
       if (prevOk && afterOk) return true;
 
-      // Move past this occurrence to check subsequent ones
       searchFrom = idx + 1;
     }
 

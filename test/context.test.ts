@@ -2,15 +2,9 @@ import { describe, it, expect, afterAll, beforeAll } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import { Context } from '../src/index';
-import { TransformersEmbedder } from '../src/embedder';
 
 const FIXTURES_DIR = path.join(__dirname, 'fixtures/docs');
 const TEST_DIR = path.join(__dirname, '.test-tmp');
-
-// Use TransformersEmbedder for tests — requires model download.
-// For faster local testing without model download, provide a custom
-// embedder mock via the embedder option.
-const testEmbedder = new TransformersEmbedder();
 
 describe('Context', () => {
   let ctx: Context;
@@ -23,7 +17,6 @@ describe('Context', () => {
 
     ctx = await Context.create({
       vectorsDir: TEST_DIR,
-      embedder: testEmbedder,
     });
   });
 
@@ -134,7 +127,6 @@ describe('Context', () => {
       const closeTestDir = TEST_DIR + '-close-test';
       const ctx2 = await Context.create({
         vectorsDir: closeTestDir,
-        embedder: testEmbedder,
       });
       await ctx2.load('close-test', path.join(FIXTURES_DIR, 'getting-started.md'));
       await ctx2.close();
@@ -157,7 +149,6 @@ describe('Context with reranking', () => {
     it('should rerank results with keyword scoring', async () => {
       const ctx = await Context.create({
         vectorsDir: rerankTestDir,
-        embedder: testEmbedder,
       });
 
       await ctx.load('rerank', path.join(FIXTURES_DIR, 'line-chart-guide.md'));
@@ -181,7 +172,6 @@ describe('Context with reranking', () => {
     it('should support disabling reranking', async () => {
       const ctx = await Context.create({
         vectorsDir: rerankTestDir + '-disabled',
-        embedder: testEmbedder,
       });
 
       await ctx.load('rerank2', path.join(FIXTURES_DIR, 'line-chart-guide.md'));
@@ -217,7 +207,6 @@ describe('Context with query expansion', () => {
     it('should expand CN query to match EN content', async () => {
       const ctx = await Context.create({
         vectorsDir: expandTestDir,
-        embedder: testEmbedder,
       });
 
       await ctx.load('expand', path.join(FIXTURES_DIR, 'line-chart-guide.md'));
@@ -238,7 +227,6 @@ describe('Context with query expansion', () => {
     it('should support disabling query expansion', async () => {
       const ctx = await Context.create({
         vectorsDir: expandTestDir + '-disabled',
-        embedder: testEmbedder,
         queryExpansion: false,
       });
 
@@ -260,7 +248,6 @@ describe('Context with query expansion', () => {
     it('should expand EN query to match CN concepts', async () => {
       const ctx = await Context.create({
         vectorsDir: expandTestDir + '-en',
-        embedder: testEmbedder,
         queryExpansion: {
           synonyms: {
             'animation': ['动效', 'animate', 'transition'],
@@ -299,7 +286,6 @@ describe('Context with weight configuration', () => {
   it('should create Context with custom ftsFieldWeights', async () => {
     const ctx = await Context.create({
       vectorsDir: weightTestDir,
-      embedder: testEmbedder,
       ftsFields: ['content'],
       ftsFieldWeights: { content: 2 },
       rankConstant: 30,
@@ -317,7 +303,6 @@ describe('Context with weight configuration', () => {
     // When zvec is not available, MemoryZvecStore is used with FtsFieldWeights
     const ctx = await Context.create({
       vectorsDir: weightTestDir + '-mem',
-      embedder: testEmbedder,
       ftsFields: ['content'],
       ftsFieldWeights: { content: 3 },
     });

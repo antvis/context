@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isCJK, detectLanguage, tokenizerForLanguage, detectTokenizer } from '../src/embedder/language';
+import { isCJK, detectLanguage, tokenizerForLanguage, detectTokenizer } from '../src/utils/tokenizer';
 
 describe('isCJK', () => {
   it('should detect Chinese characters', () => {

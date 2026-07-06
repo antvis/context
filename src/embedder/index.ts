@@ -3,18 +3,20 @@
  *
  * Re-exports from split files:
  *   types.ts        → Embedder interface
- *   language.ts     → isCJK, detectLanguage, tokenizerForLanguage, detectTokenizer
  *   transformers.ts → TransformersEmbedder
  *   manager.ts      → EmbedderManager, getEmbedder, resetEmbedder
  *   resolve.ts      → resolveEmbedder
+ *
+ * Language detection & tokenizer utilities have moved to src/utils/tokenizer.ts.
+ * They are still available via the embedder module for backward compatibility.
  */
 
 // Types
 export type { Embedder } from './types';
 
-// Language detection & CJK utilities
-export { isCJK, splitMixed, detectLanguage, tokenizerForLanguage, detectTokenizer } from './language';
-export type { LanguageHint } from './language';
+// Language detection & CJK utilities — re-exported from utils for backward compatibility
+export { isCJK, splitMixed, detectLanguage, tokenizerForLanguage, detectTokenizer } from '../utils/tokenizer';
+export type { LanguageHint } from '../utils/tokenizer';
 
 // TransformersEmbedder — production-quality model embedder
 export { TransformersEmbedder } from './transformers';

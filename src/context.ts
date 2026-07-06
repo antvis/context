@@ -1,22 +1,24 @@
 import * as path from 'path';
 import * as fs from 'fs';
-import * as crypto from 'crypto';
 import { glob } from 'glob';
 import { ContextOptions, QueryOptions, QueryResult, Document, LoadPhase, LoadProgress } from './types';
-import {
-  resolveEmbedder,
-} from './embedder';
-import type { Embedder } from './embedder';
-import type { EmbedderInfo } from './embedder';
+import { resolveEmbedder } from './embedder';
+import type { Embedder, EmbedderInfo } from './embedder';
 import { Loader, MarkdownLoader, JsonLoader, TextLoader } from './loaders';
 import { DocumentRegistry } from './registry';
-import { StoreManager } from './store-manager';
+import { Store } from './storage/store';
 import type { ZvecDoc } from './storage/zvec-store';
 import { pathToId } from './loaders/util';
-import { createReranker } from './reranker';
-import type { Reranker, RerankCandidate } from './reranker';
-import { SynonymExpander, NoopExpander } from './query-expander';
-import type { QueryExpander } from './query-expander';
+import {
+  createReranker,
+  SynonymExpander,
+  NoopExpander,
+  safeParseMeta,
+  resolveLibraries,
+  computeContentHash,
+  selectSampleFiles,
+} from './utils';
+import type { Reranker, RerankCandidate, QueryExpander } from './utils';
 
 // ---------------------------------------------------------------------------
 // Context class
@@ -27,7 +29,7 @@ export class Context {
   private readonly basePath: string;
   private readonly embedder: Embedder;
   private readonly _embedderInfo: EmbedderInfo;
-  private readonly storeManager: StoreManager;
+  private readonly store: Store;
   private readonly registry: DocumentRegistry;
   private readonly loaders: Loader[];
   private readonly reranker: Reranker | null;
@@ -39,20 +41,14 @@ export class Context {
     this.basePath = options.basePath ?? process.cwd();
     this.embedder = embedder;
     this._embedderInfo = embedderInfo;
-    this.storeManager = new StoreManager(options.vectorsDir, embedder, options);
+    this.store = new Store(options.vectorsDir, embedder, options);
     this.registry = new DocumentRegistry();
-    this.loaders = options.loaders ?? [
+    this.loaders = [
       new MarkdownLoader(),
       new JsonLoader(),
       new TextLoader(),
     ];
-    // Reranker is created eagerly — it has no model-load cost (KeywordReranker).
-    // Weights are configurable via ContextOptions.rerankWeights.
     this.reranker = createReranker(options.rerankWeights);
-    // Query expansion — uses user-provided synonym map only, no built-in defaults.
-    // When queryExpansion is false, expansion is disabled entirely.
-    // When queryExpansion is true/undefined/object without synonyms, SynonymExpander
-    // is created with an empty map (effectively a no-op).
     this.queryExpander = options.queryExpansion === false
       ? new NoopExpander()
       : new SynonymExpander(
@@ -63,21 +59,9 @@ export class Context {
   }
 
   static async create(options: ContextOptions): Promise<Context> {
-    let embedder: Embedder;
-    let embedderInfo: EmbedderInfo;
-
-    if (options.embedder) {
-      // User provided a custom embedder — infer info from its class
-      embedder = options.embedder;
-      embedderInfo = {
-        kind: 'transformers',
-        dimensions: embedder.dimensions,
-      };
-    } else {
-      const result = await resolveEmbedder(options.model);
-      embedder = result.embedder;
-      embedderInfo = result.info;
-    }
+    const result = await resolveEmbedder();
+    const embedder = result.embedder;
+    const embedderInfo = result.info;
 
     // Ensure vectors directory exists
     if (!fs.existsSync(options.vectorsDir)) {
@@ -110,8 +94,7 @@ export class Context {
    *   - basePath = dir (the project root)
    *   - vectorsDir = dir/.context/vectors (hidden, won't pollute project)
    *
-   * All other options (model, embedder, etc.) can still be
-   * overridden via options.
+   * All other options can still be overridden via options.
    */
   static async fromDir(dir: string, options?: Partial<ContextOptions>): Promise<Context> {
     const absoluteDir = path.resolve(dir);
@@ -175,7 +158,7 @@ export class Context {
       }
     }
 
-    const store = await this.storeManager.getOrCreate(library, sampleText);
+    const openedStore = await this.store.create(library, sampleText);
 
     // Load registry from disk if not already loaded for this library
     if (!this.registry.hasLibrary(library)) {
@@ -263,7 +246,7 @@ export class Context {
       },
     }));
 
-    await store.insert(zvecDocs);
+    await this.store.addDoc(library, zvecDocs);
 
     // Progress: insert phase complete
     if (this._onProgress) {
@@ -321,17 +304,15 @@ export class Context {
     // eliminates the serial wait time when querying multiple libraries.
     const perLibraryResults = await Promise.all(
       libraries.map(async (library) => {
-        const store = this.storeManager.tryOpen(library);
-        if (!store) return [] as QueryResult[];
+        const searchResults = await this.store.queryDoc(library, {
+          mode,
+          queryText: expandedText,
+          queryVector: vector,
+          topK: searchTopK,
+          filter: options.filter,
+        });
 
-        const searchResults = mode === 'hybrid'
-          ? await store.searchHybrid({
-              queryText: expandedText,
-              queryVector: vector,
-              topK: searchTopK,
-              filter: options.filter,
-            })
-          : await store.search({ vector, topK: searchTopK, filter: options.filter });
+        if (searchResults.length === 0) return [] as QueryResult[];
 
         return searchResults.map((result) => {
           const content = String(result.fields?.content ?? '');
@@ -353,7 +334,7 @@ export class Context {
     );
 
     // Flatten and sort by coarse score
-    let allResults = perLibraryResults.flat();
+    const allResults = perLibraryResults.flat();
     allResults.sort((a, b) => b.score - a.score);
 
     // Stage 2: Rerank the candidate pool for precision (when enabled).
@@ -403,7 +384,7 @@ export class Context {
 
     this.registry.remove(library, id);
     this.registry.saveToDisk(this.vectorsDir, library);
-    await this.storeManager.close(library);
+    await this.store.close(library);
   }
 
   /**
@@ -420,8 +401,8 @@ export class Context {
    */
   async rebuild(library: string, pattern: string | string[]): Promise<void> {
     // Close and delete the existing store
-    await this.storeManager.close(library);
-    await this.storeManager.deleteStore(library);
+    await this.store.close(library);
+    await this.store.deleteStore(library);
 
     // Clear the registry so all docs will be re-loaded
     this.registry.removeLibrary(library);
@@ -447,91 +428,6 @@ export class Context {
    * exit or before re-creating a new instance).
    */
   async close(): Promise<void> {
-    await this.storeManager.closeAll();
+    await this.store.closeAll();
   }
-}
-
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Safely parse meta JSON string. Returns undefined on invalid JSON.
- */
-function safeParseMeta(metaStr: string | undefined): Record<string, unknown> | undefined {
-  if (!metaStr) return undefined;
-  try {
-    return JSON.parse(metaStr);
-  } catch {
-    return undefined;
-  }
-}
-
-
-/**
- * Resolve library names from the query option.
- *
- * - '*' queries all loaded libraries.
- * - Array of names queries multiple specific libraries.
- * - Comma-separated string is supported for backward compatibility.
- * - Single string is the normal case.
- */
-function resolveLibraries(
-  librarySpec: string | string[],
-  registry: DocumentRegistry
-): string[] {
-  // Array form: direct
-  if (Array.isArray(librarySpec)) {
-    return librarySpec.filter(Boolean);
-  }
-
-  // Wildcard: all libraries
-  if (librarySpec === '*') {
-    return registry.getLibraryNames();
-  }
-
-  // Comma-separated: backward compatibility
-  if (librarySpec.includes(',')) {
-    return librarySpec.split(',').map((s) => s.trim()).filter(Boolean);
-  }
-
-  // Single library
-  return [librarySpec];
-}
-
-/**
- * Compute a short content hash for change detection.
- *
- * Uses SHA-256 truncated to 16 hex chars (64-bit) — compact enough
- * for registry storage, collision-resistant enough for dedup.
- */
-function computeContentHash(content: string): string {
-  return crypto.createHash('sha256').update(content).digest('hex').slice(0, 16);
-}
-
-/**
- * Select a representative sample of files from a list for tokenizer detection.
- *
- * Picks files spread across the list (first, middle, last, and evenly-spaced)
- * to avoid bias when the file order doesn't reflect content distribution.
- * Returns at most `maxCount` file paths.
- */
-function selectSampleFiles(files: string[], maxCount: number): string[] {
-  if (files.length <= maxCount) return files;
-
-  const result: string[] = [];
-  // Always include first and last
-  result.push(files[0]);
-  // Add evenly-spaced samples from the middle
-  const step = Math.floor((files.length - 1) / (maxCount - 1));
-  for (let i = step; i < files.length - 1; i += step) {
-    if (result.length < maxCount) {
-      result.push(files[i]);
-    }
-  }
-  // Always include last (if not already included)
-  if (result[result.length - 1] !== files[files.length - 1] && result.length < maxCount) {
-    result.push(files[files.length - 1]);
-  }
-  return result;
 }

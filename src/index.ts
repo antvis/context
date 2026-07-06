@@ -15,12 +15,12 @@ export {
 export { pathToId } from './loaders/util';
 
 // Reranker — two-stage retrieval precision scoring
-export { KeywordReranker, createReranker } from './reranker';
-export type { Reranker, RerankCandidate, RerankResult } from './reranker';
+export { KeywordReranker, createReranker } from './utils/reranker';
+export type { Reranker, RerankCandidate, RerankResult } from './utils/reranker';
 
 // Query expansion — synonym bridging for cross-language recall
-export { SynonymExpander, NoopExpander } from './query-expander';
-export type { QueryExpander } from './query-expander';
+export { SynonymExpander, NoopExpander } from './utils/expander';
+export type { QueryExpander } from './utils/expander';
 
 // ---------------------------------------------------------------------------
 // Advanced API — for extending or customizing internals
@@ -67,6 +67,7 @@ export type {
 // DocumentRegistry — dedup tracking
 export { DocumentRegistry } from './registry';
 
-// StoreManager — zvec store lifecycle management
-export { StoreManager } from './store-manager';
+// Store — zvec store lifecycle management
+export { Store } from './storage/store';
+export type { StoreQueryParams } from './storage/store';
 

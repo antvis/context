@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { KeywordReranker, createReranker } from '../src/reranker';
-import type { RerankCandidate } from '../src/reranker';
+import { KeywordReranker, createReranker } from '../src/utils/reranker';
+import type { RerankCandidate } from '../src/utils/reranker';
 
 describe('KeywordReranker', () => {
   const reranker = new KeywordReranker();

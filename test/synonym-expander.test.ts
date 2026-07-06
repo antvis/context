@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { SynonymExpander, NoopExpander } from '../src/query-expander';
+import { SynonymExpander, NoopExpander } from '../src/utils/expander';
 
 describe('SynonymExpander', () => {
   describe('with user-provided synonyms', () => {

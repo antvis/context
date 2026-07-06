@@ -41,24 +41,15 @@ const ctx2 = await Context.fromDir('/path/to/project');
 await ctx.load('g2', './g2-docs/**/*.md');
 await ctx.load('f2', './f2-docs/**/*.json');
 
-// Query a single library (default: hybrid search = vector + FTS text)
+// Query a single library (default: hybrid search + reranking)
 const results = await ctx.query('How to configure a line chart', { library: 'g2', topK: 5 });
-// => [{ content: '...', score: 0.92, scoreMode: 'hybrid', id: 'g2-docs/line.md' }, ...]
-
-// Query with two-stage reranking (pulls extra candidates, then re-scores)
-const rerankedResults = await ctx.query('sankey diagram', { library: 'g2', topK: 5, rerank: { rerankFactor: 3 } });
+// => [{ content: '...', score: 0.92, scoreMode: 'reranked', id: 'g2-docs/line.md' }, ...]
 
 // Query multiple libraries (array form)
 const crossResults = await ctx.query('chart configuration', { library: ['g2', 'f2'], topK: 5 });
 
 // Query all loaded libraries
 const allResults = await ctx.query('visualization', { library: '*', topK: 10 });
-
-// Pure vector search (skip FTS text path)
-const vectorResults = await ctx.query('chart', { library: 'g2', topK: 5, mode: 'vector' });
-
-// Filter results by field value
-const filteredResults = await ctx.query('tooltip', { library: 'g2', topK: 5, filter: "sourceFilePath = 'docs/line-chart.md'" });
 
 // Close when done (releases resources)
 await ctx.close();
@@ -73,14 +64,10 @@ await ctx.close();
 |-----------|------|---------|-------------|
 | `vectorsDir` | `string` | — | **Required**. Directory to store vector files |
 | `basePath` | `string` | `process.cwd()` | Base path for resolving document IDs. Set for cross-machine consistent IDs. |
-| `model` | `string` | auto | Transformers model name for embedding. Skipped when custom `embedder` is provided. |
-| `loaders` | `Loader[]` | built-in | Custom loaders (default: MarkdownLoader, JsonLoader, TextLoader) |
-| `embedder` | `Embedder` | auto-resolved | Custom embedder. Skips auto-resolution when provided. |
 | `onProgress` | `(phase, detail) => void` | — | Progress callback for `load()` phases: `'load'` → `'embed'` → `'insert'`. |
 | `queryExpansion` | `QueryExpansionOptions | false` | `false` (no-op) | Query expansion with user-provided synonym map. `false` disables. Without `synonyms`, expansion is a no-op. |
 | `ftsFields` | `string[]` | `['content']` | Fields to index for Full Text Search in hybrid mode |
 | `ftsFieldWeights` | `Record<string, number>` | `{ content: 1 }` | Per-field boost weights for FTS text path. Higher = more influence. |
-| `tokenizer` | `'jieba' | 'standard' | 'auto'` | `'auto'` | FTS tokenizer. `jieba` for CN, `standard` for EN, `auto` picks safe default. |
 | `rankConstant` | `number` | `60` | RRF rank constant for hybrid search fusion. Lower = "winner-takes-all", higher = more even. |
 
 #### Weight Configuration Example
@@ -147,30 +134,16 @@ const ctx = await Context.create({
 
 ### `ctx.query(text, options)`
 
-Two-stage retrieval: coarse search (vector / hybrid) → optional reranking → final topK results.
+Two-stage retrieval: coarse search (vector / hybrid) → reranking → final topK results.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `library` | `string | string[]` | — | Library name(s). Single: `'g2'`, Multiple: `['g2', 'f2']`, All: `'*'`. Comma-separated `'g2,f2'` also supported. |
 | `topK` | `number` | `5` | Number of results to return |
-| `mode` | `'hybrid' | 'vector'` | `'hybrid'` | Search mode. `'hybrid'` = vector + FTS text (better recall), `'vector'` = pure semantic search |
-| `rerank` | `RerankOptions | false` | `false` | Reranking configuration. Pass an object `{ rerankFactor, minCandidates }` to enable, or `false` to skip |
-| `filter` | `string` | — | Filter expression for zvec exact-match filtering, e.g. `"sourceFilePath = 'docs/line.md'"` |
 
 ```typescript
-// Hybrid search (default) — best recall for exact term matching
+// Semantic search — hybrid (vector + FTS) + reranking by default
 const results = await ctx.query('sankey diagram', { library: 'g2', topK: 5 });
-
-// Hybrid search with reranking enabled — two-stage retrieval for precision
-const results = await ctx.query('line chart config', {
-  library: 'g2', topK: 5, rerank: { rerankFactor: 3, minCandidates: 10 }
-});
-
-// Pure vector search — when FTS is not needed
-const results = await ctx.query('chart', { library: 'g2', topK: 5, mode: 'vector' });
-
-// Filter by source file path
-const filtered = await ctx.query('tooltip', { library: 'g2', filter: "sourceFilePath = 'docs/line.md'" });
 
 // Multiple libraries
 const results = await ctx.query('chart', { library: ['g2', 'f2'], topK: 5 });
@@ -233,7 +206,7 @@ Quick-start convenience method — creates a Context from a project directory wi
 ```typescript
 const ctx = await Context.fromDir('/path/to/project');
 // With custom overrides
-const ctx = await Context.fromDir('/path/to/project', { model: 'custom-model' });
+const ctx = await Context.fromDir('/path/to/project', { ftsFieldWeights: { content: 2 } });
 ```
 
 ### `ctx.remove(library, id)` — **Deprecated**
@@ -276,37 +249,35 @@ await ctx.close();
             +--------+--------+                   | (SynonymExpander)|
                      |                            +--------+--------+
             +--------v--------+                            |
-            |  Chunker        |                            v
-            | (Markdown/Fixed)+--------+           +--------v--------+
-            +--------+--------+        |           |    Embedder     |
-                     |                  |           +--------+--------+
-            +--------v--------+         |                    |
-            |  EmbedBatch     |         |           +--------v--------+
-            +--------+--------+         |           |   Vectorize     |
-                     |                  |           +--------+--------+
-            +--------v--------+         |                    |
-            |      .zvec      |         +--------+-----------+
-            +-----------------+                  |
-                                               v
-                                   +-----------+-----------+
-                                   |                       |
-                           +-------v-------+       +-------v-------+
-                           | FTS Text Path  |       |  Vector Path  |
-                           |(ftsFieldWeights|       |               |
-                           |   tokenizer)   |       |               |
-                           +-------+-------+       +-------+-------+
-                                   |                       |
-                                   +-----------+-----------+
-                                               |
-                                   +-----------v-----------+
-                                   |    RRF Fusion          |
-                                   |   (rankConstant)       |
-                                   +-----------+-----------+
-                                               |
-                                   +-----------v-----------+
-                                   |   KeywordReranker      |
-                                   |  (optional, 2nd stage) |
-                                   +-----------+-----------+
+            |  EmbedBatch     |                            v
+            +--------+--------+                   +--------v--------+
+                     |                            |    Embedder     |
+            +--------v--------+                   +--------+--------+
+            |      .zvec      |                            |
+            +-----------------+                   +--------v--------+
+                                                  |   Vectorize     |
+                                                  +--------+--------+
+                                                           |
+                                                  +--------+-----------+
+                                                           |
+                                               +-----------v-----------+
+                                               |                       |
+                                       +-------v-------+       +-------v-------+
+                                       | FTS Text Path  |       |  Vector Path  |
+                                       |(ftsFieldWeights|       |               |
+                                       +-------+-------+       +-------+-------+
+                                               |                       |
+                                               +-----------+-----------+
+                                                           |
+                                               +-----------v-----------+
+                                               |    RRF Fusion          |
+                                               |   (rankConstant)       |
+                                               +-----------+-----------+
+                                                           |
+                                               +-----------v-----------+
+                                               |   KeywordReranker      |
+                                               |  (optional, 2nd stage) |
+                                               +-----------+-----------+
                                                |
                                          Query Result
 
@@ -316,10 +287,9 @@ await ctx.close();
 ### Module Structure
 
 - **Public API**: `Context`, `QueryOptions`, `QueryResult`, `Document`, `Loader`, `MarkdownLoader`, `JsonLoader`, `TextLoader`, `pathToId`
-- **Chunking**: `MarkdownChunker`, `FixedSizeChunker`, `createChunker`, `ChunkingOptions`, `Chunk`, `Chunker`
 - **Reranking**: `KeywordReranker`, `createReranker`, `Reranker`, `RerankCandidate`, `RerankResult`, `RerankOptions`
 - **Query Expansion**: `SynonymExpander`, `NoopExpander`, `QueryExpander`, `QueryExpansionOptions`
-- **Advanced API**: `Embedder`, `TransformersEmbedder`, `EmbedderManager`, `IZvecStore`, `MemoryZvecStore`, `ActualZvecStore`, `DocumentRegistry`, `StoreManager`
+- **Advanced API**: `Embedder`, `TransformersEmbedder`, `EmbedderManager`, `IZvecStore`, `MemoryZvecStore`, `ActualZvecStore`, `DocumentRegistry`, `Store`
 
 
 ## License

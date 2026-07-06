@@ -54,8 +54,6 @@ export interface RerankOptions {
 export interface ContextOptions {
   /** Directory to store vector files */
   vectorsDir: string;
-  /** Transformers model name */
-  model?: string;
   /**
    * Base path for resolving document IDs.
    *
@@ -66,14 +64,6 @@ export interface ContextOptions {
    * Defaults to `process.cwd()`.
    */
   basePath?: string;
-  /** Custom loaders to register (default: MarkdownLoader, JsonLoader, TextLoader) */
-  loaders?: import('./loaders').Loader[];
-  /**
-   * Custom embedder instance. When provided, skips the auto-resolution
-   * logic and uses this embedder directly. Useful for when you
-   * have a pre-initialized embedder.
-   */
-  embedder?: import('./embedder').Embedder;
 
   /**
    * Progress callback for `load()` — called after each major phase completes.
@@ -131,17 +121,6 @@ export interface ContextOptions {
   ftsFieldWeights?: Record<string, number>;
 
   /**
-   * FTS tokenizer for full-text search indexing.
-   *
-   * - `'jieba'` (default): Chinese word segmentation, best for CN/mixed content
-   * - `'standard'`: English stemmer + stop words, best for pure English content
-   * - `'auto'`: same as `'jieba'` (safe default for bilingual datasets)
-   *
-   * Only affects newly created stores. Existing stores keep their schema.
-   */
-  tokenizer?: 'jieba' | 'standard' | 'auto';
-
-  /**
    * RRF rank constant for hybrid search fusion.
    *
    * Controls how much influence rare (low-rank) results have.
@@ -164,7 +143,7 @@ export interface ContextOptions {
    * rerankWeights: { headingTermBonus: 4.0, phraseWeight: 5.0 }
    * ```
    */
-  rerankWeights?: Omit<import('./reranker').RerankOptions, 'rerankFactor' | 'minCandidates'>;
+  rerankWeights?: Omit<import('./utils/reranker').RerankOptions, 'rerankFactor' | 'minCandidates'>;
 
   /**
    * Allow automatic fallback to in-memory store when @zvec/zvec is unavailable.
@@ -213,12 +192,12 @@ export interface QueryOptions {
   /**
    * Reranking configuration.
    *
-   * When enabled, the query pipeline uses two-stage retrieval:
+   * When enabled (default), the query pipeline uses two-stage retrieval:
    *   1. Coarse search (vector / hybrid) returns topK × rerankFactor candidates
    *   2. Reranker scores each candidate against the query for precision
    *   3. Final sort by reranked score → topK results
    *
-   * Set to `false` to skip reranking (default). Pass an object to configure
+   * Set to `false` to skip reranking. Pass an object to configure
    * the rerank factor and minimum candidate pool size.
    */
   rerank?: RerankOptions | false;

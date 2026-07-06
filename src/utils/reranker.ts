@@ -5,9 +5,6 @@
  *   1. Coarse search (vector / hybrid) → topK × rerankFactor candidates
  *   2. Reranker scores each candidate against the query
  *   3. Final sort by reranked score → topK results
- *
- * This two-stage approach combines fast vector pre-filtering with a more
- * expensive but more precise scoring model on the shortlist.
  */
 
 // ---------------------------------------------------------------------------
@@ -38,37 +35,15 @@ export interface Reranker {
 
 /** Configuration for reranking. */
 export interface RerankOptions {
-  /**
-   * How many extra candidates to pull from the coarse search stage.
-   * e.g. with topK=5 and rerankFactor=3, 15 candidates are reranked.
-   * Default: 3
-   */
   rerankFactor?: number;
-  /**
-   * Minimum number of candidates to rerank (floor).
-   * Default: 10
-   */
   minCandidates?: number;
-
-  // -----------------------------------------------------------------------
-  // KeywordReranker scoring weights — tune for your domain
-  // -----------------------------------------------------------------------
-
-  /** Weight for exact phrase match. Default: 3.0 */
   phraseWeight?: number;
-  /** Bonus per additional phrase occurrence beyond the first. Default: 0.5 */
   phraseRepeatBonus?: number;
-  /** Weight for whole-word term match. Default: 1.0 */
   termWeight?: number;
-  /** Bonus per additional term occurrence beyond the first. Default: 0.2 */
   termRepeatBonus?: number;
-  /** Weight for substring (partial) term match. Default: 0.3 */
   substringWeight?: number;
-  /** Bonus when a query term appears in the heading path. Default: 2.0 */
   headingTermBonus?: number;
-  /** Bonus when the full query phrase appears in the heading path. Default: 2.5 */
   headingPhraseBonus?: number;
-  /** Fraction of the original coarse score carried into the reranked score. Default: 0.1 */
   originalScoreCarry?: number;
 }
 
@@ -79,7 +54,6 @@ export interface RerankOptions {
 const DEFAULT_RERANK_FACTOR = 3;
 const DEFAULT_MIN_CANDIDATES = 10;
 
-/** Default scoring weights for KeywordReranker. */
 const DEFAULT_WEIGHTS = {
   phraseWeight: 3.0,
   phraseRepeatBonus: 0.5,
@@ -98,13 +72,7 @@ const DEFAULT_WEIGHTS = {
 /**
  * Reranker that scores candidates by keyword / phrase overlap with the query.
  *
- * This provides a complementary signal to vector similarity: the coarse
- * embedding stage captures semantic closeness, while this reranker boosts
- * candidates that contain the exact query terms (or their substrings).
- *
- * All scoring weights are configurable via constructor options. See
- * `RerankOptions` for available tuning parameters.
- *
+ * All scoring weights are configurable via constructor options.
  * Scores are normalised to [0, 1] via min-max scaling.
  */
 export class KeywordReranker implements Reranker {
@@ -138,7 +106,6 @@ export class KeywordReranker implements Reranker {
       // 1. Exact phrase match — strongest signal
       if (contentLower.includes(queryPhrase)) {
         score += w.phraseWeight;
-        // Bonus for each additional occurrence
         const phraseCount = countOccurrences(contentLower, queryPhrase);
         score += (phraseCount - 1) * w.phraseRepeatBonus;
       }
@@ -146,19 +113,17 @@ export class KeywordReranker implements Reranker {
       // 2. Per-term matching
       for (const term of queryTerms) {
         if (contentLower.includes(term)) {
-          // Whole word match
           if (isWordBoundary(contentLower, term)) {
             score += w.termWeight;
             const termCount = countTermMatches(contentLower, term);
             score += (termCount - 1) * w.termRepeatBonus;
           } else {
-            // Substring match (e.g. "tool" matches "tooltip")
             score += w.substringWeight;
           }
         }
       }
 
-      // 3. Heading path bonus — terms in section headings are more relevant
+      // 3. Heading path bonus
       if (c.headingPath) {
         const headingLower = c.headingPath.toLowerCase();
         for (const term of queryTerms) {
@@ -196,16 +161,13 @@ export class KeywordReranker implements Reranker {
 
 /** Split a query into meaningful tokens. */
 function tokenizeQuery(query: string): string[] {
-  // Split on whitespace and CJK-friendly boundaries
   const raw = query
     .split(/[\s,，。.!！？?、：:；;]+/)
     .filter(Boolean);
 
-  // For mixed CN/EN queries, also extract CJK bigrams as tokens
   const tokens: string[] = [];
   for (const r of raw) {
     tokens.push(r);
-    // For CJK segments, add bigrams as additional tokens
     if (/[一-鿿]{3,}/.test(r)) {
       for (let i = 0; i + 2 <= r.length; i++) {
         tokens.push(r.slice(i, i + 2));
@@ -259,9 +221,6 @@ function isWordBoundary(
 
 /**
  * Create a reranker with optional weight configuration.
- *
- * Currently returns KeywordReranker. In the future this may auto-select
- * based on available models (cross-encoder, etc.).
  */
 export function createReranker(options?: RerankOptions): Reranker {
   return new KeywordReranker(options);

@@ -1,8 +1,8 @@
 /**
  * Language detection and tokenizer selection utilities.
  *
- * Used by StoreManager to auto-configure FTS tokenization based on
- * the character distribution of loaded documents.
+ * Pure functions that determine the best FTS tokenizer based on
+ * the character distribution of sample text content.
  */
 
 // ---------------------------------------------------------------------------
@@ -51,7 +51,6 @@ export function splitMixed(text: string): string[] {
 /**
  * Detect the dominant language category of a text sample.
  *
- * Used by StoreManager to pick the right FTS tokenizer:
  *   - 'cjk'   → jieba (Chinese word segmentation)
  *   - 'latin'  → standard (English stemmer + stop words)
  *   - 'mixed'  → jieba (the more general choice for mixed scripts)
@@ -83,8 +82,6 @@ export function detectLanguage(text: string): LanguageHint {
 
 /**
  * Pick the best FTS tokenizer name for a given language hint.
- *
- * This is the function StoreManager calls to auto-configure tokenization.
  */
 export function tokenizerForLanguage(hint: LanguageHint): string {
   switch (hint) {
