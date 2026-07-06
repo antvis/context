@@ -12,7 +12,7 @@ export interface Document {
   meta?: Record<string, unknown>;
   /**
    * SHA-256 content hash (16 chars) — used internally for change detection.
-   * Populated by `Context.load()` before registry insertion; not stored in zvec.
+   * Populated by `Context.load()` and stored in zvec as the single source of truth.
    */
   contentHash?: string;
 }

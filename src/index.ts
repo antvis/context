@@ -62,9 +62,6 @@ export type {
   ActualZvecStoreOptions,
 } from './storage/zvec-store';
 
-// DocumentRegistry — dedup tracking
-export { DocumentRegistry } from './registry';
-
 // Store — zvec store lifecycle management
 export { Store } from './storage/store';
 export type { StoreQueryParams } from './storage/store';

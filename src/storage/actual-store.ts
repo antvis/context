@@ -33,6 +33,8 @@ interface ZvecSDK {
 /** Zvec collection type — minimal interface we rely on. */
 interface ZvecCollection {
   insertSync(records: unknown[]): void;
+  upsertSync(records: unknown[]): void;
+  fetchSync(params: { ids: string | string[]; outputFields?: string[]; includeVector?: boolean }): Record<string, ZvecQueryRaw>;
   querySync(params: unknown): ZvecQueryRaw[];
   multiQuerySync(params: unknown): ZvecQueryRaw[];
   closeSync(): void;
@@ -212,7 +214,29 @@ export class ActualZvecStore implements IZvecStore {
       vectors: { [this._vectorField]: d.vector },
       fields: d.fields
     }));
-    this._collection.insertSync(records);
+    // upsertSync handles both new docs and content-changed updates in one call.
+    this._collection.upsertSync(records);
+  }
+
+  async fetch(ids: string[], outputFields?: string[]): Promise<Record<string, ZvecQueryResult>> {
+    if (this._closed) throw new Error('Store is closed');
+    if (ids.length === 0) return {};
+
+    const raw = this._collection.fetchSync({
+      ids,
+      outputFields,
+      includeVector: false,
+    });
+
+    const result: Record<string, ZvecQueryResult> = {};
+    for (const [id, doc] of Object.entries(raw)) {
+      result[id] = {
+        id,
+        score: 0,
+        fields: (doc as ZvecQueryRaw).fields ?? {},
+      };
+    }
+    return result;
   }
 
   async search(params: ZvecSearchParams): Promise<ZvecQueryResult[]> {

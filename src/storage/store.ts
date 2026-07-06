@@ -46,6 +46,7 @@ function contextStoreConfig(dims: number, sampleText?: string): ZvecStoreConfig 
       },
       { name: 'meta', dataType: 'STRING' },
       { name: 'sourceFilePath', dataType: 'STRING' },
+      { name: 'contentHash', dataType: 'STRING' },
     ],
   };
 }
@@ -92,7 +93,6 @@ export interface StoreQueryParams {
 export class Store {
   private readonly vectorsDir: string;
   private readonly embedder: Embedder;
-  private readonly rankConstant: number;
   private readonly contextOptions?: ContextOptions;
   private readonly stores: Map<string, IZvecStore> = new Map();
   /** In-flight creation promises — prevents duplicate stores from concurrent calls. */
@@ -101,7 +101,6 @@ export class Store {
   constructor(vectorsDir: string, embedder: Embedder, options?: ContextOptions) {
     this.vectorsDir = vectorsDir;
     this.embedder = embedder;
-    this.rankConstant = options?.rankConstant ?? DEFAULT_RANK_CONSTANT;
     this.contextOptions = options;
   }
 
@@ -140,9 +139,10 @@ export class Store {
   }
 
   /**
-   * Batch-insert documents into a library's store.
+   * Batch-insert documents into a library's store (upsert semantics).
    *
-   * The store must have been created via `create()` first.
+   * The store must have been created via `create()` first. Uses upsert
+   * internally so already-existing IDs are updated in-place.
    *
    * @param library  Library name whose store to insert into.
    * @param docs     Documents to insert (id, vector, fields).
@@ -153,6 +153,27 @@ export class Store {
       throw new Error(`Store for library "${library}" has not been created. Call create() first.`);
     }
     await store.insert(docs);
+  }
+
+  /**
+   * Batch-fetch stored documents by ID, returning only the requested fields.
+   *
+   * This is the single-source-of-truth for dedup — zvec owns the document
+   * catalog so there is no separate registry to keep in sync.
+   *
+   * @param library      Library name to query.
+   * @param ids          Document IDs to look up.
+   * @param outputFields Fields to return (default: all).
+   * @returns            Map of found IDs → their fields. Missing IDs are absent.
+   */
+  async fetchDocs(
+    library: string,
+    ids: string[],
+    outputFields?: string[],
+  ): Promise<Record<string, ZvecQueryResult>> {
+    const store = this.stores.get(library) ?? this._tryOpenFromDisk(library);
+    if (!store) return {};
+    return store.fetch(ids, outputFields);
   }
 
   /**

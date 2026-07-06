@@ -12,7 +12,6 @@ import {
 import { resolveEmbedder } from './embedder';
 import type { Embedder, EmbedderInfo } from './embedder';
 import { Loader, MarkdownLoader, JsonLoader, TextLoader } from './loaders';
-import { DocumentRegistry } from './registry';
 import { Store } from './storage/store';
 import type { ZvecDoc } from './storage/zvec-store';
 import { pathToId } from './loaders/util';
@@ -31,24 +30,20 @@ import type { Reranker, RerankCandidate, QueryExpander } from './utils';
 // ---------------------------------------------------------------------------
 
 export class Context {
-  private readonly vectorsDir: string;
   private readonly basePath: string;
   private readonly embedder: Embedder;
   private readonly _embedderInfo: EmbedderInfo;
   private readonly store: Store;
-  private readonly registry: DocumentRegistry;
   private readonly loaders: Loader[];
   private readonly reranker: Reranker | null;
   private readonly queryExpander: QueryExpander;
   private readonly _onProgress?: (phase: LoadPhase, detail: LoadProgress) => void;
 
   private constructor(options: ContextOptions, embedder: Embedder, embedderInfo: EmbedderInfo) {
-    this.vectorsDir = options.vectorsDir;
     this.basePath = options.basePath ?? process.cwd();
     this.embedder = embedder;
     this._embedderInfo = embedderInfo;
     this.store = new Store(options.vectorsDir, embedder, options);
-    this.registry = new DocumentRegistry();
     this.loaders = [new MarkdownLoader(), new JsonLoader(), new TextLoader()];
     this.reranker = createReranker(options.rerankWeights);
     this.queryExpander =
@@ -74,21 +69,6 @@ export class Context {
 
     const ctx = new Context(options, embedder, embedderInfo);
 
-    // Auto-recover registry from existing index files on disk.
-    // When a process restarts, the in-memory registry is empty, but the
-    // zvec store and `.index.json` files persist. Scanning for these
-    // files and loading them into the registry prevents duplicate
-    // re-embedding of unchanged documents.
-    if (fs.existsSync(options.vectorsDir)) {
-      const indexFiles = fs
-        .readdirSync(options.vectorsDir)
-        .filter((f) => f.endsWith('.index.json'));
-      for (const indexFile of indexFiles) {
-        const library = indexFile.replace('.index.json', '');
-        ctx.registry.loadFromDisk(options.vectorsDir, library);
-      }
-    }
-
     return ctx;
   }
 
@@ -106,12 +86,9 @@ export class Context {
   /**
    * Load documents into a library with automatic vectorization.
    *
-   * Documents that have already been loaded (same id) are skipped to
-   * prevent duplicate vectors in the store. Uses batch embedding for
-   * better performance when loading many files at once.
-   *
-   * Document IDs are derived from the file path relative to `basePath`,
-   * ensuring the same document gets the same ID across different machines.
+   * Deduplication uses zvec's native document catalog as the single source
+   * of truth — already-loaded documents whose content hasn't changed
+   * (same contentHash) are skipped. No separate registry file is needed.
    *
    * @param library  Library name for organizing documents.
    * @param pattern  Glob pattern(s) matching files to load.
@@ -121,10 +98,6 @@ export class Context {
     const files = await glob(patterns, { absolute: true });
 
     // Sample multiple files for FTS tokenizer auto-detection.
-    // Only used when `tokenizer` is 'auto' and the store does not yet exist.
-    // Sampling up to 5 files from different positions in the file list
-    // ensures we don't pick the wrong tokenizer when the first file is
-    // an English README but most content is Chinese.
     let sampleText: string | undefined;
     if (files.length > 0) {
       try {
@@ -143,55 +116,35 @@ export class Context {
       }
     }
 
-    const openedStore = await this.store.create(library, sampleText);
+    await this.store.create(library, sampleText);
 
-    // Load registry from disk if not already loaded for this library
-    if (!this.registry.hasLibrary(library)) {
-      this.registry.loadFromDisk(this.vectorsDir, library);
+    // Internal type that extends Document with load-phase metadata.
+    interface LoadedDoc extends Document {
+      id: string;
+      contentHash: string;
+      sourceFilePath: string;
     }
 
-    // Phase 1: Load all documents concurrently and filter out duplicates.
-    // Each file is an independent I/O operation — running them in parallel
-    // eliminates the serial disk-read bottleneck.  We use allSettled so
-    // one broken file does not kill the entire batch.
-    //
-    // Change detection: files whose content hash differs from the stored
-    // hash are re-embedded (content was updated since last load).
+    // Phase 1: Load all files concurrently and collect candidates.
     const loadSettled = await Promise.allSettled(
       files.map(async (filePath) => {
         const loader = this.getLoader(filePath);
         if (!loader) return null;
 
         const doc = await loader.load(filePath);
-
-        // Derive ID from relative path for cross-machine consistency
         const relativePath = path.relative(this.basePath, filePath);
         const docId = pathToId(relativePath);
-
-        // Compute content hash for change detection
         const contentHash = computeContentHash(doc.content);
-
-        // Deduplication: skip documents whose content hasn't changed.
-        // If the hash differs, the file was updated — re-embed it.
-        if (this.registry.has(library, docId, contentHash)) return null;
 
         return { ...doc, id: docId, contentHash, sourceFilePath: relativePath };
       }),
     );
 
-    // Internal type that extends Document with load-phase metadata.
-    // id is required here — Context.load() always assigns it via pathToId.
-    interface LoadedDoc extends Document {
-      id: string; // override optional Document.id → required
-      contentHash?: string;
-      sourceFilePath?: string;
-    }
-
-    const docsToEmbed: LoadedDoc[] = [];
+    const candidates: LoadedDoc[] = [];
     let failCount = 0;
     for (const r of loadSettled) {
       if (r.status === 'fulfilled' && r.value !== null) {
-        docsToEmbed.push(r.value);
+        candidates.push(r.value);
       } else if (r.status === 'rejected') {
         failCount++;
       }
@@ -200,6 +153,26 @@ export class Context {
       console.warn(
         `[context] ${failCount}/${files.length} file(s) failed to load in library "${library}" and were skipped.`,
       );
+    }
+
+    if (candidates.length === 0) return;
+
+    // Phase 1b: Dedup via zvec — batch-fetch stored contentHashes.
+    // Zvec is the single source of truth; no separate registry needed.
+    const candidateIds = candidates.map((d) => d.id);
+    const existing = await this.store.fetchDocs(library, candidateIds, ['contentHash']);
+
+    const docsToEmbed: LoadedDoc[] = [];
+    for (const doc of candidates) {
+      const stored = existing[doc.id];
+      if (!stored) {
+        // New document — embed and insert
+        docsToEmbed.push(doc);
+      } else if (stored.fields.contentHash !== doc.contentHash) {
+        // Content changed — re-embed and update
+        docsToEmbed.push(doc);
+      }
+      // else: contentHash matches → skip (already up to date)
     }
 
     // Progress: load phase complete
@@ -218,7 +191,7 @@ export class Context {
       this._onProgress('embed', { loaded: vectors.length, total: docsToEmbed.length });
     }
 
-    // Phase 3: Batch insert into store
+    // Phase 3: Batch insert into store (upsert — handles both new and changed docs)
     const zvecDocs: ZvecDoc[] = docsToEmbed.map((doc, index) => ({
       id: doc.id,
       vector: vectors[index],
@@ -226,6 +199,7 @@ export class Context {
         content: doc.content,
         meta: doc.meta && Object.keys(doc.meta).length > 0 ? JSON.stringify(doc.meta) : '',
         sourceFilePath: doc.sourceFilePath ?? '',
+        contentHash: doc.contentHash,
       },
     }));
 
@@ -235,12 +209,6 @@ export class Context {
     if (this._onProgress) {
       this._onProgress('insert', { loaded: zvecDocs.length, total: docsToEmbed.length });
     }
-
-    // Phase 4: Update registry (track by parent doc ID for deduplication + change detection)
-    for (const doc of docsToEmbed) {
-      this.registry.add(library, doc.id, doc.contentHash);
-    }
-    this.registry.saveToDisk(this.vectorsDir, library);
   }
 
   /**

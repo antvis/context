@@ -32,6 +32,13 @@ export interface ZvecHybridParams {
 
 export interface IZvecStore {
   insert(docs: ZvecDoc[]): Promise<void>;
+  /**
+   * Batch-fetch documents by ID, returning only the requested fields.
+   *
+   * This is the single-source-of-truth for dedup — zvec owns the document
+   * catalog so there is no separate registry to keep in sync.
+   */
+  fetch(ids: string[], outputFields?: string[]): Promise<Record<string, ZvecQueryResult>>;
   /** Pure ANN vector search. */
   search(params: ZvecSearchParams): Promise<ZvecQueryResult[]>;
   /** Hybrid FTS + Vector with native RRF fusion (when available). */
