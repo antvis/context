@@ -51,9 +51,6 @@ export interface RerankOptions {
 // Defaults
 // ---------------------------------------------------------------------------
 
-const DEFAULT_RERANK_FACTOR = 3;
-const DEFAULT_MIN_CANDIDATES = 10;
-
 const DEFAULT_WEIGHTS = {
   phraseWeight: 3.0,
   phraseRepeatBonus: 0.5,

@@ -1,5 +1,3 @@
-import * as crypto from 'crypto';
-
 // ---------------------------------------------------------------------------
 // JSON / meta helpers
 // ---------------------------------------------------------------------------
@@ -14,20 +12,6 @@ export function safeParseMeta(metaStr: string | undefined): Record<string, unkno
   } catch {
     return undefined;
   }
-}
-
-// ---------------------------------------------------------------------------
-// Content hashing
-// ---------------------------------------------------------------------------
-
-/**
- * Compute a short content hash for change detection.
- *
- * Uses SHA-256 truncated to 16 hex chars (64-bit) — compact enough
- * for zvec field storage, collision-resistant enough for dedup.
- */
-export function computeContentHash(content: string): string {
-  return crypto.createHash('sha256').update(content).digest('hex').slice(0, 16);
 }
 
 // ---------------------------------------------------------------------------

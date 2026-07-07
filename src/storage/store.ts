@@ -223,17 +223,6 @@ export class Store {
   }
 
   /**
-   * Delete a library's store file from disk (after closing it).
-   */
-  async deleteStore(library: string): Promise<void> {
-    await this.close(library);
-    const filePath = this._getStorePath(library);
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-    }
-  }
-
-  /**
    * Close all cached stores and release resources.
    *
    * Called by `Context.close()` at process exit.

@@ -26,29 +26,6 @@ export function isCJK(ch: string): boolean {
 }
 
 /**
- * Split text into alternating CJK / non-CJK segments.
- */
-export function splitMixed(text: string): string[] {
-  const result: string[] = [];
-  let buf = '';
-  let bufIsCJK: boolean | null = null;
-
-  for (const ch of text) {
-    const cjk = isCJK(ch);
-    if (bufIsCJK === null) {
-      bufIsCJK = cjk;
-    } else if (cjk !== bufIsCJK) {
-      result.push(buf);
-      buf = '';
-      bufIsCJK = cjk;
-    }
-    buf += ch;
-  }
-  if (buf) result.push(buf);
-  return result;
-}
-
-/**
  * Detect the dominant language category of a text sample.
  *
  *   - 'cjk'   → jieba (Chinese word segmentation)

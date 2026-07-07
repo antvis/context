@@ -15,7 +15,7 @@
 export type { Embedder } from './types';
 
 // Language detection & CJK utilities — re-exported from utils for backward compatibility
-export { isCJK, splitMixed, detectLanguage, tokenizerForLanguage, detectTokenizer } from '../utils/tokenizer';
+export { isCJK, detectLanguage, tokenizerForLanguage, detectTokenizer } from '../utils/tokenizer';
 export type { LanguageHint } from '../utils/tokenizer';
 
 // TransformersEmbedder — production-quality model embedder
@@ -26,4 +26,4 @@ export { EmbedderManager, getEmbedder, resetEmbedder } from './manager';
 
 // Embedder resolution
 export { resolveEmbedder } from './resolve';
-export type { EmbedderInfo, EmbedderKind, ResolveResult } from './resolve';
+export type { EmbedderInfo, EmbedderKind } from './resolve';

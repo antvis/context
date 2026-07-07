@@ -5,17 +5,18 @@
  * a specific domain module (embedder, loaders, storage).
  */
 
-// Common helpers — JSON parsing, hashing, sampling
+// Common helpers — JSON parsing, sampling
 export {
   safeParseMeta,
-  computeContentHash,
   selectSampleFiles,
 } from './common';
+
+// Hashing — SHA-256 content hash for dedup & ID generation
+export { computeContentHash } from './hash';
 
 // Tokenizer selection — language detection & FTS tokenizer auto-configuration
 export {
   isCJK,
-  splitMixed,
   detectLanguage,
   tokenizerForLanguage,
   detectTokenizer,
