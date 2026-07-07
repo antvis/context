@@ -30,19 +30,16 @@ export interface EmbedderManagerOptions {
 export class EmbedderManager {
   private _defaultEmbedder: Embedder | null = null;
   private readonly _loader: TransformersLoader;
-  private readonly _ownsLoader: boolean;
 
   constructor(options?: EmbedderManagerOptions) {
     if (options?.transformersLoader) {
       this._loader = options.transformersLoader;
-      this._ownsLoader = false;
     } else {
       // Default: use global shared loader (backward-compatible)
       this._loader = {
         load: loadTransformersModule,
         reset: resetTransformersModule,
       };
-      this._ownsLoader = false;
     }
   }
 
@@ -70,12 +67,12 @@ export class EmbedderManager {
     if (!t) {
       throw new Error(
         '@huggingface/transformers is not installed. Semantic search requires a model-based embedder.\n' +
-        '  Install it with:\n' +
-        '    npm install @huggingface/transformers\n' +
-        '  Then download the model:\n' +
-        '    node scripts/download-model.mjs\n' +
-        '  Or set mirror for China:\n' +
-        '    export HF_ENDPOINT=https://hf-mirror.com'
+          '  Install it with:\n' +
+          '    npm install @huggingface/transformers\n' +
+          '  Then download the model:\n' +
+          '    node scripts/download-model.mjs\n' +
+          '  Or set mirror for China:\n' +
+          '    export HF_ENDPOINT=https://hf-mirror.com',
       );
     }
 
@@ -86,9 +83,9 @@ export class EmbedderManager {
     } catch (err) {
       throw new Error(
         `Failed to load embedding model (bge-small-zh-v1.5): ${(err as Error).message?.split('\n')[0] ?? 'unknown'}\n` +
-        '  To fix model download:\n' +
-        '    1. Set mirror: export HF_ENDPOINT=https://hf-mirror.com\n' +
-        '    2. Manual download: node scripts/download-model.mjs'
+          '  To fix model download:\n' +
+          '    1. Set mirror: export HF_ENDPOINT=https://hf-mirror.com\n' +
+          '    2. Manual download: node scripts/download-model.mjs',
       );
     }
     return this._defaultEmbedder;

@@ -1,5 +1,5 @@
-import * as crypto from 'crypto';
 import * as path from 'path';
+import { computeContentHash } from '../utils/hash';
 
 /**
  * Convert a file path to a safe, collision-resistant ID for zvec.
@@ -20,7 +20,7 @@ export function pathToId(filePath: string): string {
   const normalized = path.normalize(filePath).replace(/\\/g, '/').replace(/^\/+/, '');
 
   // Generate a compact hash of the full path (16 hex chars = 64-bit)
-  const hash = crypto.createHash('sha256').update(normalized).digest('hex').slice(0, 16);
+  const hash = computeContentHash(normalized);
 
   // Derive a short readable suffix from the filename (without extension)
   const basename = normalized.split('/').pop() ?? '';

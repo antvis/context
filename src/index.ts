@@ -37,22 +37,19 @@ export {
   tokenizerForLanguage,
   detectTokenizer,
 } from './embedder';
-export type { Embedder } from './embedder';
-export type { LanguageHint } from './embedder';
-export type { EmbedderInfo, EmbedderKind } from './embedder';
+export type { Embedder, LanguageHint, EmbedderInfo, EmbedderKind } from './embedder';
 
 // Zvec store — custom vector storage backends
 export {
-  IZvecStore,
   ActualZvecStore,
   createZvecStore,
   openZvecStore,
   openZvecStoreSync,
   isZvecAvailable,
   buildZvecSchema,
-  cosineSimilarity,
 } from './storage/zvec-store';
 export type {
+  IZvecStore,
   ZvecDoc,
   ZvecQueryResult,
   ZvecSearchParams,
@@ -65,4 +62,5 @@ export type {
 // Store — zvec store lifecycle management
 export { Store } from './storage/store';
 export type { StoreQueryParams } from './storage/store';
+
 

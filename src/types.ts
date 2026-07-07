@@ -1,20 +1,14 @@
+import type { RerankOptions } from './utils/reranker';
+import type { EmbedderKind } from './embedder/resolve';
+
 /**
  * Document structure
  */
 export interface Document {
-  /** Document unique identifier — assigned by Context.load() (hash-based).
-   * Not set by Loaders; Context.load() derives it from the file path
-   * relative to basePath for cross-machine consistency. */
-  id?: string;
   /** Document content */
   content: string;
   /** Markdown front-matter metadata */
   meta?: Record<string, unknown>;
-  /**
-   * SHA-256 content hash (16 chars) — used internally for change detection.
-   * Populated by `Context.load()` and stored in zvec as the single source of truth.
-   */
-  contentHash?: string;
 }
 
 /** Configuration for query expansion. */
@@ -27,25 +21,10 @@ export interface QueryExpansionOptions {
    * when the key is found. Useful for CN↔EN terminology bridging
    * or domain-specific synonym expansion.
    *
-   * Oomit or pass an empty map for no expansion (effectively a no-op).
+   * Omit or pass an empty map for no expansion (effectively a no-op).
    * Set `queryExpansion: false` to disable expansion entirely.
    */
   synonyms?: Record<string, string[]>;
-}
-
-/** Configuration for reranking. */
-export interface RerankOptions {
-  /**
-   * How many extra candidates to pull from the coarse search stage.
-   * e.g. with topK=5 and rerankFactor=3, 15 candidates are reranked.
-   * Default: 3
-   */
-  rerankFactor?: number;
-  /**
-   * Minimum number of candidates to rerank (floor).
-   * Default: 10
-   */
-  minCandidates?: number;
 }
 
 /**
@@ -135,15 +114,14 @@ export interface ContextOptions {
    * KeywordReranker scoring weights — tune for your domain.
    *
    * These weights control how the second-stage reranker scores candidates.
-   * See `RerankOptions` for available tuning parameters. When omitted,
-   * sensible defaults are used.
+   * When omitted, sensible defaults are used.
    *
    * Example: boost heading matches for API docs:
    * ```ts
    * rerankWeights: { headingTermBonus: 4.0, phraseWeight: 5.0 }
    * ```
    */
-  rerankWeights?: Omit<import('./utils/reranker').RerankOptions, 'rerankFactor' | 'minCandidates'>;
+  rerankWeights?: Omit<RerankOptions, 'rerankFactor' | 'minCandidates'>;
 }
 
 /**
@@ -223,7 +201,7 @@ export interface QueryResult {
    *
    * - `'transformers'`: high-quality bilingual model (bge-small-zh-v1.5)
    */
-  embedderKind?: import('./embedder/resolve').EmbedderKind;
+  embedderKind?: EmbedderKind;
 }
 
 /**
@@ -240,13 +218,3 @@ export interface LoadProgress {
   /** Total documents to process in this phase */
   total: number;
 }
-
-// Re-export zvec types for convenience (also available from storage/zvec-store)
-export type {
-  ZvecDoc,
-  ZvecQueryResult,
-  ZvecSearchParams,
-  ZvecHybridParams,
-  ZvecFieldSchema,
-  ZvecStoreConfig,
-} from './storage/zvec-store';
