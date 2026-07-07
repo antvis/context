@@ -208,14 +208,6 @@ await ctx.close();
 +------------------------------------------------------------------------+
 ```
 
-### Module Structure
-
-- **Public API**: `Context`, `QueryOptions`, `QueryResult`, `Document`, `Loader`, `MarkdownLoader`, `JsonLoader`, `TextLoader`, `pathToId`
-- **Reranking**: `KeywordReranker`, `createReranker`, `Reranker`, `RerankCandidate`, `RerankResult`, `RerankOptions`
-- **Query Expansion**: `SynonymExpander`, `NoopExpander`, `QueryExpander`, `QueryExpansionOptions`
-- **Advanced API**: `Embedder`, `TransformersEmbedder`, `EmbedderManager`, `IZvecStore`, `ActualZvecStore`, `Store`
-
-
 ## License
 
 MIT

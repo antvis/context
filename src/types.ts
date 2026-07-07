@@ -1,4 +1,4 @@
-import type { RerankOptions } from './utils/reranker';
+import type { RerankOptions } from './reranker';
 
 /**
  * Document structure

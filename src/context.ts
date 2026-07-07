@@ -5,10 +5,7 @@ import {
   ContextOptions,
   QueryOptions,
   QueryResult,
-  Document,
   LoadedDoc,
-  LoadPhase,
-  LoadProgress,
 } from './types';
 import { Embedder } from './embedder';
 
@@ -18,24 +15,18 @@ import { pathToId } from './utils/doc';
 import { Store } from './storage/store';
 import type { ZvecDoc } from './storage/zvec-store';
 import {
-  createReranker,
   safeJsonParse,
   computeContentHash,
   loadSampleText,
 } from './utils';
 import { expand } from './expander';
-import type { Reranker, RerankCandidate } from './utils';
-
-// ---------------------------------------------------------------------------
-// Context class
-// ---------------------------------------------------------------------------
+import { applyRerank } from './reranker';
 
 export class Context {
   private readonly options: ContextOptions;
   private readonly embedder: Embedder;
   readonly embedderInfo: EmbedderInfo;
   private readonly store: Store;
-  private readonly reranker: Reranker | null;
 
   private constructor(options: ContextOptions, embedder: Embedder, embedderInfo: EmbedderInfo) {
     this.options = {
@@ -46,7 +37,6 @@ export class Context {
     this.embedder = embedder;
     this.embedderInfo = embedderInfo;
     this.store = new Store(this.options.vectorsDir!, embedder, this.options);
-    this.reranker = createReranker(this.options.rerankWeights);
   }
 
   static async create(options: ContextOptions): Promise<Context> {
@@ -163,23 +153,8 @@ export class Context {
       };
     });
 
-    if (rerankEnabled && queryResults.length > topK) {
-      const docs: RerankCandidate[] = queryResults.map((r) => ({
-        id: r.id,
-        content: r.content,
-        score: r.score,
-      }));
-
-      const reranked = await this.reranker!.rerank(text, docs);
-
-      const scoreMap = new Map(reranked.map((r) => [r.id, r.score]));
-      for (const result of queryResults) {
-        const newScore = scoreMap.get(result.id);
-        if (newScore !== undefined) {
-          result.score = newScore;
-          result.scoreMode = 'reranked';
-        }
-      }
+    if (rerankEnabled) {
+      await applyRerank(this.options.rerankWeights, text, queryResults, topK);
     }
 
     queryResults.sort((a, b) => b.score - a.score);
