@@ -28,10 +28,10 @@ export interface RerankResult {
   score: number;
 }
 
-/** Reranker interface — custom rerankers can implement this. */
-export interface Reranker {
+/** Reranker type */
+export type Reranker = {
   rerank(query: string, candidates: RerankCandidate[]): Promise<RerankResult[]>;
-}
+};
 
 /** Configuration for reranking. */
 export interface RerankOptions {
@@ -72,7 +72,7 @@ const DEFAULT_WEIGHTS = {
  * All scoring weights are configurable via constructor options.
  * Scores are normalised to [0, 1] via min-max scaling.
  */
-export class KeywordReranker implements Reranker {
+export class KeywordReranker {
   private readonly weights: Record<string, number>;
 
   constructor(options?: RerankOptions) {

@@ -1,5 +1,4 @@
 import type { RerankOptions } from './utils/reranker';
-import type { EmbedderKind } from './embedder/resolve';
 
 /**
  * Document structure
@@ -9,6 +8,18 @@ export interface Document {
   content: string;
   /** Markdown front-matter metadata */
   meta?: Record<string, unknown>;
+}
+
+/**
+ * Document with computed fields for loading.
+ */
+export interface LoadedDoc extends Document {
+  /** Document ID */
+  id: string;
+  /** Hash of document content */
+  contentHash: string;
+  /** Source file path relative to base path */
+  path: string;
 }
 
 /** Configuration for query expansion. */
@@ -31,8 +42,12 @@ export interface QueryExpansionOptions {
  * Context initialization options
  */
 export interface ContextOptions {
-  /** Directory to store vector files */
-  vectorsDir: string;
+  /**
+   * Directory to store vector files.
+   *
+   * Defaults to `'.context/vectors'`.
+   */
+  vectorsDir?: string;
   /**
    * Base path for resolving document IDs.
    *
@@ -195,13 +210,7 @@ export interface QueryResult {
    *
    * Populated during `load()` and stored as a zvec field.
    */
-  sourceFilePath?: string;
-  /**
-   * The embedder kind used to produce the vectors for this result's store.
-   *
-   * - `'transformers'`: high-quality bilingual model (bge-small-zh-v1.5)
-   */
-  embedderKind?: EmbedderKind;
+  path?: string;
 }
 
 /**

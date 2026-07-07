@@ -15,7 +15,6 @@ export type {
   ZvecQueryResult,
   ZvecSearchParams,
   ZvecHybridParams,
-  IZvecStore,
   ZvecFieldSchema,
   ZvecStoreConfig,
   ActualZvecStoreOptions,
@@ -30,7 +29,6 @@ import type {
   ZvecQueryResult,
   ZvecSearchParams,
   ZvecHybridParams,
-  IZvecStore,
   ZvecStoreConfig,
   ActualZvecStoreOptions,
   ZvecFieldSchema,
@@ -95,11 +93,9 @@ function requireZvecSync(): ZvecSDK {
 
 /**
  * Build a ZVecCollectionSchema from a generic ZvecStoreConfig.
- *
- * This is a helper for callers that want to create zvec collections without
- * dealing with the low-level zvec SDK schema API directly.
+ * Internal helper for store creation.
  */
-export function buildZvecSchema(z: ZvecSDK, config: ZvecStoreConfig): unknown {
+function buildZvecSchema(z: ZvecSDK, config: ZvecStoreConfig): unknown {
   const { ZVecCollectionSchema, ZVecDataType, ZVecIndexType, ZVecMetricType } = z;
 
   const vectorSchema = {
@@ -167,7 +163,7 @@ const DEFAULT_OPEN_OPTIONS: ActualZvecStoreOptions = {
  * the vector path uses pre-computed embeddings, and `multiQuerySync` with RRF
  * fuses both in the engine.
  */
-export class ActualZvecStore implements IZvecStore {
+export class ActualZvecStore {
   private _collection: ZvecCollection;
   private _closed = false;
   private _vectorField: string;
@@ -286,34 +282,6 @@ export class ActualZvecStore implements IZvecStore {
     }));
   }
 
-  searchSync(params: ZvecSearchParams): ZvecQueryResult[] {
-    if (this._closed) throw new Error('Store is closed');
-
-    const rawResults = this._collection.querySync(
-      this._buildVectorQuery(params)
-    );
-
-    return rawResults.map((r: ZvecQueryRaw) => ({
-      id: r.id,
-      score: r.score,
-      fields: r.fields ?? {}
-    }));
-  }
-
-  searchHybridSync(params: ZvecHybridParams): ZvecQueryResult[] {
-    if (this._closed) throw new Error('Store is closed');
-
-    const rawResults = this._collection.multiQuerySync(
-      this._buildHybridQuery(params)
-    );
-
-    return rawResults.map((r: ZvecQueryRaw) => ({
-      id: r.id,
-      score: r.score,
-      fields: r.fields ?? {}
-    }));
-  }
-
   /** Build a query params object for vector search, omitting filter when undefined. */
   private _buildVectorQuery(params: ZvecSearchParams): Record<string, unknown> {
     const q: Record<string, unknown> = {
@@ -379,37 +347,22 @@ export class ActualZvecStore implements IZvecStore {
 
 /**
  * Create a zvec store with the given config.
- *
- * Requires @zvec/zvec to be installed. Throws an error when it is not available.
  */
 export async function createZvecStore(
   path: string,
   config: ZvecStoreConfig,
-): Promise<IZvecStore> {
+): Promise<ActualZvecStore> {
   return ActualZvecStore.create(path, config);
 }
 
 /**
- * Asynchronously open a zvec store.
- *
+ * Open a zvec store.
  * Requires @zvec/zvec to be installed.
- */
-export async function openZvecStore(
-  path: string,
-  options?: ActualZvecStoreOptions
-): Promise<IZvecStore> {
-  return openZvecStoreSync(path, options);
-}
-
-/**
- * Synchronously open a zvec store.
- *
- * Requires @zvec/zvec to be installed. Throws an error when it is not available.
  */
 export function openZvecStoreSync(
   path: string,
   options?: ActualZvecStoreOptions
-): IZvecStore {
+): ActualZvecStore {
   const z = loadZvecSync();
   if (z) {
     return ActualZvecStore.openSync(path, options);
@@ -418,9 +371,4 @@ export function openZvecStoreSync(
     '@zvec/zvec is not installed. Install it with:\n' +
       '  pnpm add @zvec/zvec'
   );
-}
-
-/** Synchronous check: is @zvec/zvec available? */
-export function isZvecAvailable(): boolean {
-  return loadZvecSync() !== undefined;
 }

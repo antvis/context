@@ -1,84 +1,60 @@
 import { describe, it, expect } from 'vitest';
-import { SynonymExpander, NoopExpander } from '../src/utils/expander';
+import { expand } from '../src/expander';
 
-describe('SynonymExpander', () => {
-  describe('with user-provided synonyms', () => {
-    const expander = new SynonymExpander({
+describe('expand', () => {
+  const queryExpansion = {
+    synonyms: {
       '折线图': ['line chart', '折线'],
       'tooltip': ['提示框', '提示', 'hover'],
       'animation': ['动效', 'animate', 'transition'],
       'config': ['配置', 'configuration', '设置'],
-    });
+    },
+  };
 
-    it('should expand CN chart type to EN equivalent', () => {
-      const result = expander.expand('折线图');
-      expect(result).toContain('line chart');
-    });
-
-    it('should expand EN term to CN equivalent', () => {
-      const result = expander.expand('tooltip');
-      expect(result).toContain('提示框');
-    });
-
-    it('should not duplicate terms already in query', () => {
-      const result = expander.expand('tooltip 提示框');
-      const promptCount = result.split('提示框').length - 1;
-      expect(promptCount).toBe(1);
-    });
-
-    it('should expand multiple terms in one query', () => {
-      const result = expander.expand('tooltip config');
-      expect(result).toContain('提示框');
-      expect(result).toContain('配置');
-    });
-
-    it('should preserve original query text', () => {
-      const result = expander.expand('animation settings');
-      expect(result.startsWith('animation settings')).toBe(true);
-    });
-
-    it('should return original query when no synonyms match', () => {
-      const result = expander.expand('random unrelated terms');
-      expect(result).toBe('random unrelated terms');
-    });
-
-    it('should handle empty query', () => {
-      const result = expander.expand('');
-      expect(result).toBe('');
-    });
+  it('should expand CN chart type to EN equivalent', () => {
+    const result = expand('折线图', queryExpansion);
+    expect(result).toContain('line chart');
   });
 
-  describe('with no synonyms (empty map)', () => {
-    const expanderEmpty = new SynonymExpander({});
-    const expanderDefault = new SynonymExpander();
-
-    it('should return original query unchanged with empty map', () => {
-      const result = expanderEmpty.expand('tooltip configuration');
-      expect(result).toBe('tooltip configuration');
-    });
-
-    it('should return original query unchanged with no arguments', () => {
-      const result = expanderDefault.expand('tooltip configuration');
-      expect(result).toBe('tooltip configuration');
-    });
-
-    it('should handle empty query', () => {
-      const result = expanderDefault.expand('');
-      expect(result).toBe('');
-    });
+  it('should expand EN term to CN equivalent', () => {
+    const result = expand('tooltip', queryExpansion);
+    expect(result).toContain('提示框');
   });
-});
 
-describe('NoopExpander', () => {
-  const expander = new NoopExpander();
+  it('should not duplicate terms already in query', () => {
+    const result = expand('tooltip 提示框', queryExpansion);
+    const promptCount = result.split('提示框').length - 1;
+    expect(promptCount).toBe(1);
+  });
 
-  it('should return query unchanged', () => {
-    const result = expander.expand('tooltip configuration');
-    expect(result).toBe('tooltip configuration');
+  it('should expand multiple terms in one query', () => {
+    const result = expand('tooltip config', queryExpansion);
+    expect(result).toContain('提示框');
+    expect(result).toContain('配置');
+  });
+
+  it('should preserve original query text', () => {
+    const result = expand('animation settings', queryExpansion);
+    expect(result.startsWith('animation settings')).toBe(true);
+  });
+
+  it('should return original query when no synonyms match', () => {
+    const result = expand('random unrelated terms', queryExpansion);
+    expect(result).toBe('random unrelated terms');
   });
 
   it('should handle empty query', () => {
-    const result = expander.expand('');
+    const result = expand('', queryExpansion);
     expect(result).toBe('');
+  });
+
+  it('should return original query with no synonyms', () => {
+    const result = expand('tooltip configuration');
+    expect(result).toBe('tooltip configuration');
+  });
+
+  it('should return original query with empty synonyms', () => {
+    const result = expand('tooltip configuration', {});
+    expect(result).toBe('tooltip configuration');
   });
 });

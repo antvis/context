@@ -3,10 +3,11 @@ import * as path from 'path';
 import {
   createZvecStore,
   openZvecStoreSync,
+  ActualZvecStore,
 } from './zvec-store';
-import type { IZvecStore, ZvecStoreConfig, ActualZvecStoreOptions } from './zvec-store';
+import type { ZvecStoreConfig, ActualZvecStoreOptions } from './zvec-store';
 import type { ZvecDoc, ZvecQueryResult } from './types';
-import type { Embedder } from '../embedder';
+import { Embedder } from '../embedder';
 import { detectTokenizer } from '../utils/tokenizer';
 import type { ContextOptions } from '../types';
 
@@ -45,7 +46,7 @@ function contextStoreConfig(dims: number, sampleText?: string): ZvecStoreConfig 
         indexOptions: { tokenizerName },
       },
       { name: 'meta', dataType: 'STRING' },
-      { name: 'sourceFilePath', dataType: 'STRING' },
+      { name: 'path', dataType: 'STRING' },
       { name: 'contentHash', dataType: 'STRING' },
     ],
   };
@@ -94,9 +95,9 @@ export class Store {
   private readonly vectorsDir: string;
   private readonly embedder: Embedder;
   private readonly contextOptions?: ContextOptions;
-  private readonly stores: Map<string, IZvecStore> = new Map();
+  private readonly stores: Map<string, ActualZvecStore> = new Map();
   /** In-flight creation promises — prevents duplicate stores from concurrent calls. */
-  private readonly pending: Map<string, Promise<IZvecStore>> = new Map();
+  private readonly pending: Map<string, Promise<ActualZvecStore>> = new Map();
 
   constructor(vectorsDir: string, embedder: Embedder, options?: ContextOptions) {
     this.vectorsDir = vectorsDir;
@@ -120,7 +121,7 @@ export class Store {
    * @param sampleText Optional document sample for auto-detecting FTS tokenizer
    *                   when `tokenizer` is `'auto'`. Only used for new stores.
    */
-  async create(library: string, sampleText?: string): Promise<IZvecStore> {
+  async create(library: string, sampleText?: string): Promise<ActualZvecStore> {
     const cached = this.stores.get(library);
     if (cached) return cached;
 
@@ -240,7 +241,7 @@ export class Store {
     return path.join(this.vectorsDir, `${library}.zvec`);
   }
 
-  private async _doCreate(library: string, sampleText?: string): Promise<IZvecStore> {
+  private async _doCreate(library: string, sampleText?: string): Promise<ActualZvecStore> {
     const filePath = this._getStorePath(library);
 
     if (fs.existsSync(filePath)) {
@@ -257,7 +258,7 @@ export class Store {
    * Try to lazily open an existing store from disk if not already cached.
    * Used by queryDoc() to auto-open stores on first query.
    */
-  private _tryOpenFromDisk(library: string): IZvecStore | undefined {
+  private _tryOpenFromDisk(library: string): ActualZvecStore | undefined {
     const filePath = this._getStorePath(library);
     if (fs.existsSync(filePath)) {
       try {
