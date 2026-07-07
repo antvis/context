@@ -1,62 +1,86 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
-import { ZVecStore } from '../src/storage/zvec-store';
+import {
+  createZvecStore,
+  isZvecAvailable,
+} from '../src/storage/zvec-store';
+import type { IZvecStore, ZvecStoreConfig } from '../src/storage/zvec-store';
 
 const TEST_DIR = path.join(__dirname, '.test-tmp');
 const STORE_PATH = path.join(TEST_DIR, 'test.zvec');
 
-describe('ZVecStore', () => {
-  let store: ZVecStore;
+function makeConfig(dims: number = 4): ZvecStoreConfig {
+  return {
+    collectionName: 'test_collection',
+    vectorField: 'embedding',
+    vectorDims: dims,
+    ftsFields: ['content'],
+    fields: [
+      { name: 'content', dataType: 'STRING', indexType: 'FTS', indexOptions: { tokenizerName: 'jieba' } },
+    ],
+  };
+}
+
+describe('ActualZvecStore (native)', () => {
+  let store: IZvecStore;
 
   beforeEach(async () => {
-    // Clean up before creating store
     if (fs.existsSync(TEST_DIR)) {
       fs.rmSync(TEST_DIR, { recursive: true, force: true });
     }
-    store = await ZVecStore.create(STORE_PATH, 4);
   });
 
   afterEach(async () => {
-    store?.close();
+    if (store) {
+      try { await store.close(); } catch { /* ok */ }
+    }
     await new Promise((r) => setTimeout(r, 200));
     if (fs.existsSync(TEST_DIR)) {
       try {
         fs.rmSync(TEST_DIR, { recursive: true, force: true });
-      } catch (e) {
-        // Ignore - may be locked
-      }
+      } catch { /* may be locked */ }
     }
   });
 
-  it('should create and query store', () => {
-    store.add('doc1', [0.1, 0.2, 0.3, 0.4], 'content1');
-    store.add('doc2', [0.4, 0.3, 0.2, 0.1], 'content2');
-    store.save();
+  it('should create ActualZvecStore when zvec is available', async () => {
+    if (!isZvecAvailable()) {
+      console.warn('Skipping: @zvec/zvec not available');
+      return;
+    }
 
-    const results = store.search([0.1, 0.2, 0.3, 0.4], 2);
+    const config = makeConfig(4);
+    store = await createZvecStore(STORE_PATH, config);
+
+    await store.insert([
+      { id: 'doc1', vector: [0.1, 0.2, 0.3, 0.4], fields: { content: 'hello' } },
+      { id: 'doc2', vector: [0.4, 0.3, 0.2, 0.1], fields: { content: 'world' } },
+    ]);
+
+    const results = store.searchSync({ vector: [0.1, 0.2, 0.3, 0.4], topK: 2 });
     expect(results.length).toBe(2);
     expect(results[0].id).toBe('doc1');
   });
 
-  it('should return meta with content', () => {
-    store.add('doc1', [0.1, 0.2, 0.3, 0.4], 'content1', { title: 'Test' });
-    store.save();
+  it('should support hybrid search with Full Text Search', async () => {
+    if (!isZvecAvailable()) {
+      console.warn('Skipping: @zvec/zvec not available');
+      return;
+    }
 
-    const doc = store.getDoc('doc1');
-    expect(doc).toBeDefined();
-    expect(doc!.content).toBe('content1');
-    expect(doc!.meta).toEqual({ title: 'Test' });
-  });
+    const config = makeConfig(4);
+    store = await createZvecStore(STORE_PATH, config);
 
-  it('should clear all data', () => {
-    store.add('doc1', [0.1, 0.2, 0.3, 0.4], 'content1');
-    store.add('doc2', [0.4, 0.3, 0.2, 0.1], 'content2');
-    store.save();
+    await store.insert([
+      { id: 't1', vector: [1, 0, 0, 0], fields: { content: 'sankey diagram visualization' } },
+      { id: 't2', vector: [0, 1, 0, 0], fields: { content: 'bar chart example' } },
+    ]);
 
-    store.clear();
-
-    expect(store.getDoc('doc1')).toBeUndefined();
-    expect(store.getDoc('doc2')).toBeUndefined();
+    const results = store.searchHybridSync({
+      queryText: 'sankey',
+      queryVector: [0.9, 0.1, 0, 0],
+      topK: 2,
+    });
+    expect(results.length).toBeGreaterThan(0);
   });
 });

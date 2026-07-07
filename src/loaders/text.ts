@@ -1,5 +1,4 @@
 import * as fs from 'fs/promises';
-import * as path from 'path';
 import { Loader } from './base';
 import { Document } from '../types';
 
@@ -12,7 +11,6 @@ export class TextLoader implements Loader {
     const content = await fs.readFile(filePath, 'utf-8');
 
     return {
-      id: path.basename(filePath),
       content: content.trim(),
     };
   }
