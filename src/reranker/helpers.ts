@@ -1,3 +1,5 @@
+import { containsCJK } from '../utils';
+
 const WORD_BOUNDARY = /[\s\n.,;:!?，。！？、：；"'(（【《\-_]/;
 
 export function tokenizeQuery(query: string): string[] {
@@ -5,7 +7,7 @@ export function tokenizeQuery(query: string): string[] {
   const result: string[] = [];
   for (const r of tokens) {
     result.push(r);
-    if (/[一-鿿]{3,}/.test(r)) {
+    if (containsCJK(r)) {
       for (let i = 0; i + 2 <= r.length; i++) result.push(r.slice(i, i + 2));
     }
   }

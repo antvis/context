@@ -3,6 +3,7 @@
  */
 
 import type { QueryExpansionOptions } from '../types';
+import { containsCJK } from '../utils';
 
 const WORD_BOUNDARY_RE = /[\s,，。.!！?？;；:：\(\)\[\]{}""''\"\'\-_\/\\|@#$%^&*+=<>~`]/;
 
@@ -10,8 +11,7 @@ function containsTerm(text: string, term: string): boolean {
   if (!text.includes(term)) return false;
 
   // CJK terms use substring match
-  const isCJK = /[一-鿿㐀-䶿豈-﫿]/.test(term);
-  if (isCJK) return true;
+  if (containsCJK(term)) return true;
 
   // Latin terms use word boundary match
   let searchFrom = 0;
