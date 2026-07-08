@@ -26,6 +26,16 @@ export function isCJK(ch: string): boolean {
 }
 
 /**
+ * Check whether a string contains any CJK characters.
+ */
+export function containsCJK(text: string): boolean {
+  for (const ch of text) {
+    if (isCJK(ch)) return true;
+  }
+  return false;
+}
+
+/**
  * Detect the dominant language category of a text sample.
  *
  *   - 'cjk'   → jieba (Chinese word segmentation)

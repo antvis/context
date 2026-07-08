@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { rerank } from '../src/reranker/reranker';
-import type { RerankCandidate } from '../src/reranker/types';
+import { rerank } from '../../src/reranker/reranker';
+import type { RerankCandidate } from '../../src/reranker/types';
 
 describe('rerank', () => {
   it('should return empty array for empty candidates', async () => {

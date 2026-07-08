@@ -1,5 +1,10 @@
 # @antv/context
 
+[![Build](https://github.com/antvis/context/actions/workflows/build.yml/badge.svg)](https://github.com/antvis/context/actions/workflows/build.yml)
+[![npm version](https://img.shields.io/npm/v/@antv/context)](https://www.npmjs.com/package/@antv/context)
+[![npm downloads](https://img.shields.io/npm/dm/@antv/context)](https://www.npmjs.com/package/@antv/context)
+[![License](https://img.shields.io/npm/l/@antv/context)](./LICENSE)
+
 A local context retrieval library that enables semantic search over your documentation. It loads documents (Markdown, JSON, Text), vectorizes them using [Transformers.js](https://huggingface.co/transformers.js), and stores vectors locally in `.zvec` files for fast semantic querying. 
 
 > [!TIP]
@@ -48,7 +53,7 @@ await ctx.close();
 | `vectorsDir` | `string` | `.context/vectors` | Directory to store vector files |
 | `basePath` | `string` | `process.cwd()` | Base path for resolving document IDs. Set for cross-machine consistent IDs. |
 | `onProgress` | `(phase, detail) => void` | — | Progress callback for `load()` phases: `'load'` → `'embed'` → `'insert'`. |
-| `queryExpansion` | `QueryExpansionOptions | false` | `false` (no-op) | Query expansion with user-provided synonym map. `false` disables. Without `synonyms`, expansion is a no-op. |
+| `queryExpansion` | `QueryExpansionOptions` | `false`  | Query expansion with user-provided synonym map. `false` disables. Without `synonyms`, expansion is a no-op. |
 | `ftsFields` | `string[]` | `['content']` | Fields to index for Full Text Search in hybrid mode |
 | `ftsFieldWeights` | `Record<string, number>` | `{ content: 1 }` | Per-field boost weights for FTS text path. Higher = more influence. |
 | `rankConstant` | `number` | `60` | RRF rank constant for hybrid search fusion. Lower = "winner-takes-all", higher = more even. |
@@ -96,7 +101,7 @@ Document IDs are derived from file paths relative to `basePath` for cross-machin
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `library` | `string` | Library name for organizing documents |
-| `pattern` | `string | string[]` | Glob pattern(s) matching files to load |
+| `pattern` | `string \| string[]` | Glob pattern(s) matching files to load |
 
 ```typescript
 await ctx.load('g2', './docs/**/*.md');
