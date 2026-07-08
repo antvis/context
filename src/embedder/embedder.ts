@@ -9,21 +9,32 @@ type TransformersPipeline = (texts: string[], options: Record<string, unknown>) 
 
 export class Embedder {
   private static pipeline: TransformersPipeline | null = null;
+  private static pipelinePromise: Promise<TransformersPipeline> | null = null;
 
   readonly dimensions = DEFAULT_DIMENSIONS;
 
   private static async getPipeline(): Promise<TransformersPipeline> {
     if (Embedder.pipeline) return Embedder.pipeline;
 
-    const mod = await import('@huggingface/transformers');
-    const hfEndpoint = process.env.HF_ENDPOINT;
-    if (hfEndpoint && (mod as any).env) {
-      (mod as any).env.remoteHost = hfEndpoint;
+    if (!Embedder.pipelinePromise) {
+      Embedder.pipelinePromise = (async () => {
+        const mod = await import('@huggingface/transformers');
+        const hfEndpoint = process.env.HF_ENDPOINT;
+        if (hfEndpoint && (mod as any).env) {
+          (mod as any).env.remoteHost = hfEndpoint;
+        }
+
+        const pipe = await mod.pipeline('feature-extraction', DEFAULT_MODEL_ID) as TransformersPipeline;
+        Embedder.pipeline = pipe;
+        return Embedder.pipeline;
+      })().catch((err) => {
+        Embedder.pipeline = null;
+        Embedder.pipelinePromise = null;
+        throw err;
+      });
     }
 
-    const pipe = await mod.pipeline('feature-extraction', DEFAULT_MODEL_ID) as TransformersPipeline;
-    Embedder.pipeline = pipe;
-    return Embedder.pipeline;
+    return Embedder.pipelinePromise;
   }
 
   async embed(text: string): Promise<number[]> {
