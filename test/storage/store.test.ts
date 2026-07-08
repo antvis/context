@@ -11,12 +11,13 @@ describe('Store', () => {
 
   beforeEach(() => {
     embedder = new Embedder();
-    store = new Store(testDir, embedder);
-    // Clean up any existing test files
+    // Clean up any existing test files first
     if (fs.existsSync(testDir)) {
       fs.rmSync(testDir, { recursive: true, force: true });
     }
     fs.mkdirSync(testDir, { recursive: true });
+
+    store = new Store(testDir, embedder);
   });
 
   afterEach(() => {
