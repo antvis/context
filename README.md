@@ -25,6 +25,12 @@ A local context retrieval library that enables semantic search over your documen
 npm install @antv/context
 ```
 
+> [!TIP]
+> If you encounter model download timeout when first creating a Context, set the environment variable:
+> ```bash
+> HF_ENDPOINT=https://hf-mirror.com node your-script.js
+> ```
+
 ```typescript
 import { Context } from '@antv/context';
 
