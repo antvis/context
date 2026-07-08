@@ -41,6 +41,30 @@ describe('Context', () => {
   });
 
   describe('load', () => {
+    it('should call onProgress callback during load', async () => {
+      const progressCalls: { phase: string; detail: { loaded: number; total: number } }[] = [];
+      const progressDir = TEST_DIR + '-progress';
+
+      const ctxWithProgress = await Context.create({
+        vectorsDir: progressDir,
+        onProgress: (phase, detail) => {
+          progressCalls.push({ phase, detail });
+        },
+      });
+
+      await ctxWithProgress.load('md', path.join(FIXTURES_DIR, '*.md'));
+
+      expect(progressCalls.length).toBeGreaterThan(0);
+      expect(progressCalls.map(c => c.phase)).toContain('load');
+
+      await ctxWithProgress.close();
+
+      // Cleanup
+      if (fs.existsSync(progressDir)) {
+        fs.rmSync(progressDir, { recursive: true, force: true });
+      }
+    });
+
     it('should load markdown files', async () => {
       await ctx.load('md', path.join(FIXTURES_DIR, 'getting-started.md'));
 

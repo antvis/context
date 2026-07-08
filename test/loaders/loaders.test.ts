@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import * as path from 'path';
-import { MarkdownLoader } from '../src/loaders/markdown';
-import { JsonLoader } from '../src/loaders/json';
-import { TextLoader } from '../src/loaders/text';
+import { MarkdownLoader } from '../../src/loaders/markdown';
+import { JsonLoader } from '../../src/loaders/json';
+import { TextLoader } from '../../src/loaders/text';
 
-const FIXTURES_DIR = path.join(__dirname, 'fixtures/docs');
+const FIXTURES_DIR = path.join(__dirname, '../fixtures/docs');
 
 describe('Loaders', () => {
   describe('MarkdownLoader', () => {
@@ -37,6 +37,14 @@ describe('Loaders', () => {
 
       expect(doc.content).toContain('API Reference');
       expect(doc.content).toContain('/users');
+    });
+
+    it('should handle json string value', async () => {
+      const loader = new JsonLoader();
+      const filePath = path.join(FIXTURES_DIR, 'string.json');
+      const doc = await loader.load(filePath);
+
+      expect(doc.content).toBe('This is a JSON string value');
     });
 
     it('should handle .json extension', () => {
