@@ -59,7 +59,7 @@ await ctx.close();
 | `vectorsDir` | `string` | `.context/vectors` | Directory to store vector files |
 | `basePath` | `string` | `process.cwd()` | Base path for resolving document IDs. Set for cross-machine consistent IDs. |
 | `onProgress` | `(phase, detail) => void` | — | Progress callback for `load()` phases: `'load'` → `'embed'` → `'insert'`. |
-| `queryExpansion` | `QueryExpansionOptions` | `false`  | Query expansion with user-provided synonym map. `false` disables. Without `synonyms`, expansion is a no-op. |
+| queryExpansion | QueryExpansionOptions | false | false  | Query expansion with user-provided synonym map. false disables. Without synonyms, expansion is a no-op. |
 | `ftsFields` | `string[]` | `['content']` | Fields to index for Full Text Search in hybrid mode |
 | `ftsFieldWeights` | `Record<string, number>` | `{ content: 1 }` | Per-field boost weights for FTS text path. Higher = more influence. |
 | `rankConstant` | `number` | `60` | RRF rank constant for hybrid search fusion. Lower = "winner-takes-all", higher = more even. |
