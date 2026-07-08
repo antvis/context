@@ -11,13 +11,14 @@ import { Embedder } from './embedder';
 
 type EmbedderInfo = { dimensions: number };
 import { getLoader } from './loaders';
-import { pathToId } from './utils/doc';
-import { Store } from './storage/store';
-import type { ZvecDoc } from './storage/zvec-store';
+import { Store } from './storage';
+import type { ZvecDoc } from './storage';
 import {
   safeJsonParse,
   computeContentHash,
   loadSampleText,
+  detectTokenizer,
+  pathToId,
 } from './utils';
 import { expand } from './expander';
 import { applyRerank } from './reranker';
@@ -57,8 +58,8 @@ export class Context {
     const files = await glob(patterns, { absolute: true });
 
     const sampleText = await loadSampleText(files);
-
-    await this.store.create(library, sampleText);
+    const tokenizerName = sampleText ? detectTokenizer(sampleText) : 'jieba';
+    this.store.acquireZvec(library, tokenizerName);
 
     const docs: LoadedDoc[] = await Promise.all(
       files.map(async (filePath) => {
@@ -147,7 +148,6 @@ export class Context {
         id: result.id,
         content,
         score: result.score,
-        scoreMode: mode === 'hybrid' ? ('hybrid' as const) : ('vector' as const),
         meta,
         path: result.fields?.path as string | undefined,
       };
@@ -162,6 +162,6 @@ export class Context {
   }
 
   async close(): Promise<void> {
-    await this.store.closeAll();
+    this.store.close();
   }
 }

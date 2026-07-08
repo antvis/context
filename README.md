@@ -8,10 +8,10 @@ A local context retrieval library that enables semantic search over your documen
 
 ## Features
 
-- 📄 **Multi-format Support**: Markdown, JSON, Text 文档自动加载与向量化
-- 🔍 **Hybrid Retrieval**: 向量语义 + FTS 全文检索双路召回，RRF 融合排序
-- 🔁 **Two-stage Reranking**: KeywordReranker 精排，关键词命中优先
-- 🌐 **Query Expansion**: 用户自定义同义词表，CN↔EN 跨语言召回增强
+- **Multi-format Loading**: Automatic parsing and vectorization of Markdown, JSON, and plain text files
+- **Hybrid Search**: Combines semantic vectors with full-text search using RRF fusion for better recall
+- **Two-stage Ranking**: Coarse vector search followed by keyword-based reranking for precision
+- **Query Expansion**: Extends queries with user-defined synonym maps for cross-language and domain-specific matching
 
 
 ## Quick Start
@@ -23,8 +23,8 @@ npm install @antv/context
 ```typescript
 import { Context } from '@antv/context';
 
-// Standard creation — specify vectorsDir
-const ctx = await Context.create({ vectorsDir: './vectors' });
+// Create context (vectorsDir is optional, defaults to .context/vectors)
+const ctx = await Context.create();
 
 // Load documents into a specific library with automatic vectorization
 await ctx.load('g2', './g2-docs/**/*.md');
@@ -45,7 +45,7 @@ await ctx.close();
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `vectorsDir` | `string` | — | **Required**. Directory to store vector files |
+| `vectorsDir` | `string` | `.context/vectors` | Directory to store vector files |
 | `basePath` | `string` | `process.cwd()` | Base path for resolving document IDs. Set for cross-machine consistent IDs. |
 | `onProgress` | `(phase, detail) => void` | — | Progress callback for `load()` phases: `'load'` → `'embed'` → `'insert'`. |
 | `queryExpansion` | `QueryExpansionOptions | false` | `false` (no-op) | Query expansion with user-provided synonym map. `false` disables. Without `synonyms`, expansion is a no-op. |
@@ -57,7 +57,7 @@ await ctx.close();
 
 ```typescript
 const ctx = await Context.create({
-  vectorsDir: './vectors',
+  vectorsDir: '.context/vectors',
   // Boost title matches 3x over content matches
   ftsFieldWeights: { content: 1, title: 3 },
   // More "winner-takes-all" ranking
@@ -69,7 +69,7 @@ const ctx = await Context.create({
 
 ```typescript
 const ctx = await Context.create({
-  vectorsDir: './vectors',
+  vectorsDir: '.context/vectors',
   // Define your own CN↔EN synonym bridges (no built-in defaults)
   queryExpansion: {
     synonyms: {
@@ -82,7 +82,7 @@ const ctx = await Context.create({
 
 // Disable query expansion entirely
 const ctxNoExpand = await Context.create({
-  vectorsDir: './vectors',
+  vectorsDir: '.context/vectors',
   queryExpansion: false,
 });
 ```
@@ -107,7 +107,7 @@ Load phases emit progress via the `onProgress` callback:
 
 ```typescript
 const ctx = await Context.create({
-  vectorsDir: './vectors',
+  vectorsDir: '.context/vectors',
   onProgress: (phase, detail) => {
     console.log(`${phase}: ${detail.loaded}/${detail.total}`);
   },
@@ -138,9 +138,8 @@ Each result includes:
 | `id` | `string` | Document ID |
 | `content` | `string` | Document content |
 | `score` | `number` | Similarity score (0–1) |
-| `scoreMode` | `'vector' | 'hybrid' | 'reranked'` | How the score was computed |
 | `meta` | `Record<string, unknown>` | Front-matter metadata (if present) |
-| `sourceFilePath` | `string` | Original file path relative to `basePath` |
+| `path` | `string` | Original file path relative to `basePath` |
 
 
 ### `ctx.close()`
@@ -167,13 +166,13 @@ await ctx.close();
   +----+-----+   +----+-----+   +----+-----+         +----+-----+
        |              |              |                    |
        +--------------+--------------+                    |
-                      v                                   v
-            +-----------------+                   +-----------------+
-            |   FileLoader    |                   | QueryExpander   |
+                      |                                   |
+            +---------v-------+                   +-------v----------+
+            |   FileLoader    |                   | QueryExpander    |
             +--------+--------+                   | (SynonymExpander)|
-                     |                            +--------+--------+
+                     |                            +--------+---------+
             +--------v--------+                            |
-            |  EmbedBatch     |                            v
+            |  EmbedBatch     |                            |
             +--------+--------+                   +--------v--------+
                      |                            |    Embedder     |
             +--------v--------+                   +--------+--------+
@@ -182,27 +181,26 @@ await ctx.close();
                                                   |   Vectorize     |
                                                   +--------+--------+
                                                            |
-                                                  +--------+-----------+
-                                                           |
                                                +-----------v-----------+
                                                |                       |
-                                       +-------v-------+       +-------v-------+
+                                       +-------v--------+       +-------v-------+
                                        | FTS Text Path  |       |  Vector Path  |
-                                       |(ftsFieldWeights|       |               |
-                                       +-------+-------+       +-------+-------+
+                                       |                |       |               |
+                                       +-------+--------+       +-------+-------+
                                                |                       |
                                                +-----------+-----------+
                                                            |
                                                +-----------v-----------+
-                                               |    RRF Fusion          |
-                                               |   (rankConstant)       |
+                                               |    RRF Fusion         |
+                                               |   (rankConstant)      |
                                                +-----------+-----------+
                                                            |
-                                               +-----------v-----------+
+                                               +-----------v------------+
                                                |   KeywordReranker      |
                                                |  (optional, 2nd stage) |
-                                               +-----------+-----------+
+                                               +-----------+------------+
                                                |
+                                               v
                                          Query Result
 
 +------------------------------------------------------------------------+

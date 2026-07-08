@@ -194,15 +194,6 @@ export interface QueryResult {
   content: string;
   /** Similarity score (normalized to [0, 1] range) */
   score: number;
-  /**
-   * How the score was computed — helps users interpret and compare
-   * scores across different query modes.
-   *
-   * - `'vector'`: cosine similarity from pure vector search (0~1)
-   * - `'hybrid'`: RRF fusion score from vector + FTS text path
-   * - `'reranked'`: keyword reranker score, min-max normalized to [0, 1]
-   */
-  scoreMode?: 'vector' | 'hybrid' | 'reranked';
   /** Document metadata */
   meta?: Record<string, unknown>;
   /** Original file path relative to `basePath` — allows users to trace

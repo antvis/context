@@ -28,7 +28,6 @@ export async function applyRerank(
     const newScore = scoreMap.get(result.id);
     if (newScore !== undefined) {
       result.score = newScore;
-      result.scoreMode = 'reranked';
     }
   }
 

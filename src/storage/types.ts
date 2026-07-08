@@ -60,3 +60,11 @@ export interface ActualZvecStoreOptions {
    */
   rankConstant?: number;
 }
+
+export interface StoreQueryParams {
+  mode: 'hybrid' | 'vector';
+  queryText?: string;
+  queryVector: number[];
+  topK: number;
+  filter?: string;
+}
