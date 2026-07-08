@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { loadSampleText, selectSampleFiles } from '../../src/utils/sample';
+import * as path from 'path';
 import * as fs from 'fs';
+import { loadSampleText, selectSampleFiles } from '../../src/utils/sample';
 
 describe('loadSampleText', () => {
-  const testDir = '/tmp/test-sample-files';
+  const testDir = path.join(__dirname, '.test-sample-files');
 
   beforeEach(() => {
     // Create test files
