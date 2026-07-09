@@ -68,9 +68,12 @@ export class Context {
 
         const doc = await loader.load(filePath);
         const relativePath = path.relative(this.options.basePath!, filePath);
+        // Prefer frontmatter `id` field as doc ID for deterministic, human-readable IDs.
+        // Falls back to pathToId (hash-based) when frontmatter has no `id`.
+        const metaId = typeof doc.meta?.id === 'string' ? doc.meta.id : undefined;
         return {
           ...doc,
-          id: pathToId(relativePath),
+          id: metaId || pathToId(relativePath),
           contentHash: computeContentHash(doc.content),
           path: relativePath,
         };
