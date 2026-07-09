@@ -39,5 +39,9 @@
     "typescript": "^5.0.0",
     "vitest": "^3.2.6"
   },
-  "repository": "git@github.com:antvis/context.git"
+  "repository": "git@github.com:antvis/context.git",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  }
 }
