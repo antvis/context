@@ -31,10 +31,6 @@ jobs:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
 
-      # 确保使用最新版本的 npm 以支持 Trusted Publishing
-      - name: Update npm
-        run: npm install -g npm@latest
-
       - name: Install dependencies
         run: pnpm install
 
