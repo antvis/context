@@ -57,7 +57,7 @@ await ctx.close();
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `vectorsDir` | `string` | `.context/vectors` | Directory to store vector files |
-| `readOnly` | `boolean` | `false` | Open existing `.zvec` files only. In read-only mode, missing libraries are not created and `load()`/writes throw. |
+| `readOnly` | `boolean` | `false` | Open existing `.zvec` files only. In read-only mode, missing libraries are not created and `load()` writes throw. |
 | `basePath` | `string` | `process.cwd()` | Base path for resolving document IDs. Set for cross-machine consistent IDs. |
 | `onProgress` | `(phase, detail) => void` | — | Progress callback for `load()` phases: `'load'` → `'embed'` → `'insert'`. |
 | queryExpansion | QueryExpansionOptions | false | false  | Query expansion with user-provided synonym map. false disables. Without synonyms, expansion is a no-op. |
