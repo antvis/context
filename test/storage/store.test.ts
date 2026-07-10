@@ -73,8 +73,11 @@ describe('Store', () => {
 
     it('should reject writes in read-only mode', () => {
       const readOnlyStore = new Store(testDir, embedder, { readOnly: true });
-      expect(() => readOnlyStore.addDoc('test-lib', [])).toThrow(/read-only mode/);
-      readOnlyStore.close();
+      try {
+        expect(() => readOnlyStore.addDoc('test-lib', [])).toThrow(/read-only mode/);
+      } finally {
+        readOnlyStore.close();
+      }
     });
   });
 
