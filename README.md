@@ -64,6 +64,7 @@ await ctx.close();
 | `ftsFields` | `string[]` | `['content']` | Fields to index for Full Text Search in hybrid mode |
 | `ftsFieldWeights` | `Record<string, number>` | `{ content: 1 }` | Per-field boost weights for FTS text path. Higher = more influence. |
 | `rankConstant` | `number` | `60` | RRF rank constant for hybrid search fusion. Lower = "winner-takes-all", higher = more even. |
+| `numCandidatesMultiplier` | `number` | `4` | Candidate pool multiplier per sub-query in hybrid search. Higher values improve recall at the cost of slightly higher latency. |
 
 #### Weight Configuration Example
 

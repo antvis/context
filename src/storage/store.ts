@@ -116,11 +116,13 @@ export class Store {
     return {
       vectorField: VECTOR_FIELD,
       ftsFields: this.options?.ftsFields ?? FTS_FIELDS,
+      ftsFieldWeights: this.options?.ftsFieldWeights ?? {},
       rankConstant: this.options?.rankConstant ?? 60,
+      numCandidatesMultiplier: this.options?.numCandidatesMultiplier ?? 4,
     };
   }
 
-  private vectorSearch(collection: ZVecCollection, opts: { vectorField: string }, params: StoreQueryParams): ZvecQueryResult[] {
+  private vectorSearch(collection: ZVecCollection, opts: { vectorField: string; numCandidatesMultiplier: number }, params: StoreQueryParams): ZvecQueryResult[] {
     const query = {
       fieldName: opts.vectorField,
       vector: params.queryVector,
@@ -136,24 +138,29 @@ export class Store {
     }));
   }
 
-  private hybridSearch(collection: ZVecCollection, opts: { vectorField: string; ftsFields: string[]; rankConstant: number }, params: StoreQueryParams): ZvecQueryResult[] {
+  private hybridSearch(collection: ZVecCollection, opts: { vectorField: string; ftsFields: string[]; ftsFieldWeights: Record<string, number>; rankConstant: number; numCandidatesMultiplier: number }, params: StoreQueryParams): ZvecQueryResult[] {
     if (!opts.ftsFields?.length) {
       return this.vectorSearch(collection, opts, params);
     }
 
-    const ftsQueries = opts.ftsFields.map((fieldName) => ({
-      fieldName,
-      fts: { matchString: params.queryText ?? '' },
-      numCandidates: params.topK * 2,
-      params: { indexType: ZVecIndexType.FTS, defaultOperator: 'OR' as const },
-    }));
+    const baseNumCandidates = params.topK * opts.numCandidatesMultiplier;
+
+    const ftsQueries = opts.ftsFields.map((fieldName) => {
+      const fieldWeight = opts.ftsFieldWeights[fieldName] ?? 1;
+      return {
+        fieldName,
+        fts: { matchString: params.queryText ?? '' },
+        numCandidates: Math.ceil(baseNumCandidates * fieldWeight),
+        params: { indexType: ZVecIndexType.FTS, defaultOperator: 'OR' as const },
+      };
+    });
 
     const query = {
       queries: [
         {
           fieldName: opts.vectorField,
           vector: params.queryVector,
-          numCandidates: params.topK * 2,
+          numCandidates: baseNumCandidates,
         },
         ...ftsQueries,
       ],

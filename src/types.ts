@@ -136,6 +136,21 @@ export interface ContextOptions {
   rankConstant?: number;
 
   /**
+   * Candidate pool multiplier for each sub-query in hybrid search.
+   *
+   * Each sub-query (vector ANN + one FTS query per `ftsField`) retrieves
+   * `topK × numCandidatesMultiplier` candidates before RRF fusion.
+   * A larger pool gives the index more room to surface relevant documents,
+   * improving recall — especially for larger collections.
+   *
+   * - Lower value (e.g. 2) → smaller candidate pool, faster but lower recall
+   * - Higher value (e.g. 8) → larger pool, better recall, slightly higher latency
+   *
+   * Defaults to `4`.
+   */
+  numCandidatesMultiplier?: number;
+
+  /**
    * KeywordReranker scoring weights — tune for your domain.
    *
    * These weights control how the second-stage reranker scores candidates.
