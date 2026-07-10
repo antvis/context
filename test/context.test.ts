@@ -311,3 +311,91 @@ describe('Context with weight configuration', () => {
     await ctx.close();
   });
 });
+
+describe('Context two-phase separation', () => {
+  const twoPhaseDir = TEST_DIR + '-two-phase';
+  const multiPhaseDir = TEST_DIR + '-multi-phase';
+
+  afterAll(() => {
+    if (fs.existsSync(twoPhaseDir)) {
+      fs.rmSync(twoPhaseDir, { recursive: true, force: true });
+    }
+    if (fs.existsSync(multiPhaseDir)) {
+      fs.rmSync(multiPhaseDir, { recursive: true, force: true });
+    }
+  });
+
+  it('should load files in first phase and query in second phase with new instance', async () => {
+    // Phase 1: Create Context and load files
+    const ctxPhase1 = await Context.create({
+      vectorsDir: twoPhaseDir,
+    });
+
+    await ctxPhase1.load('two-phase-lib', path.join(FIXTURES_DIR, 'getting-started.md'));
+
+    // Query in phase 1 to verify data was loaded
+    const phase1Results = await ctxPhase1.query('install', { library: 'two-phase-lib', topK: 3 });
+    expect(phase1Results.length).toBeGreaterThan(0);
+    const phase1Contents = phase1Results.map((r) => r.content).join(' ');
+    expect(phase1Contents).toContain('npm');
+
+    // Close first phase context
+    await ctxPhase1.close();
+
+    // Phase 2: Create new Context instance with the same vectorsDir
+    const ctxPhase2 = await Context.create({
+      vectorsDir: twoPhaseDir,
+    });
+
+    // Query without calling load - should use the persisted vector files
+    const phase2Results = await ctxPhase2.query('install', { library: 'two-phase-lib', topK: 3 });
+    expect(phase2Results.length).toBeGreaterThan(0);
+    const phase2Contents = phase2Results.map((r) => r.content).join(' ');
+    expect(phase2Contents).toContain('npm');
+
+    // Verify the results are similar (same documents found)
+    const phase1Ids = phase1Results.map((r) => r.id).sort();
+    const phase2Ids = phase2Results.map((r) => r.id).sort();
+    expect(phase1Ids).toEqual(phase2Ids);
+
+    await ctxPhase2.close();
+  });
+
+  it('should handle multiple load phases in different instances', async () => {
+    // Phase 1: Load first file
+    const ctx1 = await Context.create({
+      vectorsDir: multiPhaseDir,
+    });
+    await ctx1.load('multi-lib-1', path.join(FIXTURES_DIR, 'getting-started.md'));
+    await ctx1.close();
+
+    // Phase 2: Load second file with same context
+    const ctx2 = await Context.create({
+      vectorsDir: multiPhaseDir,
+    });
+    await ctx2.load('multi-lib-2', path.join(FIXTURES_DIR, 'line-chart-guide.md'));
+
+    // Query both libraries
+    const results1 = await ctx2.query('npm', { library: 'multi-lib-1', topK: 1 });
+    const results2 = await ctx2.query('tooltip', { library: 'multi-lib-2', topK: 1 });
+
+    expect(results1.length).toBeGreaterThan(0);
+    expect(results2.length).toBeGreaterThan(0);
+
+    await ctx2.close();
+
+    // Phase 3: New instance should still have both libraries
+    const ctx3 = await Context.create({
+      vectorsDir: multiPhaseDir,
+      readOnly: true, // Open in read-only mode to ensure no writes
+    });
+
+    const results1Again = await ctx3.query('install', { library: 'multi-lib-1', topK: 1 });
+    const results2Again = await ctx3.query('chart', { library: 'multi-lib-2', topK: 1 });
+
+    expect(results1Again.length).toBeGreaterThan(0);
+    expect(results2Again.length).toBeGreaterThan(0);
+
+    await ctx3.close();
+  });
+});

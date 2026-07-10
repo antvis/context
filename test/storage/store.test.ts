@@ -45,10 +45,10 @@ describe('Store', () => {
     });
 
     it('should not create missing zvec in read-only mode', () => {
-      const readOnlyStore = new Store(testDir, embedder, { readOnly: true });
+      const readOnlyStore = new Store(path.join(__dirname, '.test-vectors-not-exist'), embedder, { readOnly: true });
       try {
         expect(() => readOnlyStore.acquireZvec('missing-lib', 'jieba')).toThrow(/read-only mode/);
-        expect(fs.existsSync(path.join(testDir, 'missing-lib.zvec'))).toBe(false);
+        expect(fs.existsSync(path.join(__dirname, '.test-vectors-not-exist', 'missing-lib.zvec'))).toBe(false);
       } finally {
         readOnlyStore.close();
       }

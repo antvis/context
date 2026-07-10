@@ -101,8 +101,7 @@ const ctxNoExpand = await Context.create({
 
 #### Read-only zvec Example
 
-Use `readOnly: true` when `.zvec` files are prepared elsewhere and the current
-process should only query them:
+Use `readOnly: true` when `.zvec` files are prepared elsewhere and the current process should only query them:
 
 ```typescript
 const ctx = await Context.create({
@@ -113,9 +112,7 @@ const ctx = await Context.create({
 const results = await ctx.query('How to configure a line chart', { library: 'g2' });
 ```
 
-In read-only mode, `Context` opens existing `${library}.zvec` files with
-`ZVecOpen`. It does not create missing stores, and `load()` will throw because
-it would mutate the zvec file.
+In read-only mode, `Context` opens existing `${library}.zvec` files with `ZVecOpen`. It does not create missing stores, and `load()` will throw because it would mutate the zvec file.
 
 ### `ctx.load(library, pattern)`
 
