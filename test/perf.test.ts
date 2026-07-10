@@ -2,6 +2,7 @@ import { describe, it, expect, afterAll } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import { Context } from '../src/index';
+import { Embedder } from '../src/embedder';
 
 const TEST_DIR = path.join(__dirname, '.test-tmp');
 const NUM_FILES = 100;
@@ -181,4 +182,164 @@ should be integrated into the development workflow.
       }
     }
   });
+});
+
+// ── Query Latency Benchmark ───────────────────────────────────────────────────
+
+const BENCH_QUERIES = [
+  'semantic search with vector embeddings',
+  'how to optimize database queries',
+  'machine learning model training techniques',
+  'REST API authentication best practices',
+  'CSS layout with flexbox and grid',
+  'TypeScript generic types and interfaces',
+  'git branching and merging workflow',
+  'docker container deployment',
+  'Python data analysis with pandas',
+  'neural network backpropagation',
+  'React hooks state management',
+  'SQL join operations explained',
+  'GraphQL schema and resolvers',
+  'performance testing strategies',
+  'error handling in async code',
+  'unit testing with mocking',
+  'CI/CD pipeline automation',
+  'cloud storage and caching patterns',
+  'WebSocket real-time communication',
+  'code review best practices',
+];
+
+function percentile(sorted: number[], p: number): number {
+  const idx = Math.ceil((p / 100) * sorted.length) - 1;
+  return sorted[Math.max(0, idx)];
+}
+
+function mean(arr: number[]): number {
+  return arr.reduce((a, b) => a + b, 0) / arr.length;
+}
+
+function fmtMs(ms: number): string {
+  return `${ms.toFixed(1)}ms`;
+}
+
+describe('Query Latency Benchmark', () => {
+  const benchDir = path.join(__dirname, '.test-tmp-query-bench');
+  const fixturesDir = path.join(benchDir, 'fixtures');
+
+  afterAll(() => {
+    if (fs.existsSync(benchDir)) {
+      fs.rmSync(benchDir, { recursive: true, force: true });
+    }
+  });
+
+  it('should report end-to-end query latency with phase breakdown', async () => {
+    // ── 1. Create 20 varied documents ────────────────────────────────────────
+    fs.mkdirSync(fixturesDir, { recursive: true });
+    const topics = [
+      ['vector-search', 'Vector search uses embeddings to find semantically similar documents. Approximate nearest neighbour algorithms like HNSW provide sub-linear lookup time by building a navigable graph over the vector space.'],
+      ['database-opt', 'Database query optimisation involves choosing efficient join orderings, adding indexes on high-cardinality columns, and avoiding full-table scans. EXPLAIN ANALYSE reveals actual row counts and execution times.'],
+      ['ml-training', 'Training a machine learning model requires a labelled dataset, a loss function, and an optimiser such as Adam or SGD. Early stopping prevents overfitting by halting when validation loss stops decreasing.'],
+      ['rest-api', 'REST API design centres on stateless resources. Use HTTP verbs correctly: GET to read, POST to create, PUT/PATCH to update, DELETE to remove. Return standard status codes and consistent JSON envelopes.'],
+      ['css-layout', 'CSS Flexbox arranges items along a single axis; Grid handles two-dimensional layouts. Use gap for spacing, align-items for cross-axis alignment, and justify-content for main-axis distribution.'],
+      ['typescript', 'TypeScript generics let you write type-safe reusable code. Constrain type parameters with extends, use conditional types for branching, and mapped types to transform existing interfaces.'],
+      ['git-workflow', 'Git branching strategies like trunk-based development keep integration friction low. Rebase to maintain a linear history, squash noisy commits, and use signed tags for releases.'],
+      ['docker', 'Docker images are built from layered Dockerfiles. Multi-stage builds reduce final image size. Compose orchestrates multi-container applications; Kubernetes handles production scheduling.'],
+      ['pandas', 'Pandas DataFrames offer vectorised operations over tabular data. Use groupby for aggregations, merge for joins, and query/eval for fast boolean filtering without Python loops.'],
+      ['neural-net', 'Neural networks learn representations through gradient descent. Backpropagation computes gradients layer by layer via the chain rule. Batch normalisation and dropout regularise deep networks.'],
+      ['react', 'React functional components use hooks for state and side effects. useState holds local state; useEffect triggers after renders; useCallback memoises handlers to avoid unnecessary re-renders.'],
+      ['sql-joins', 'SQL INNER JOIN returns only matched rows. LEFT JOIN preserves all left-table rows. CROSS JOIN produces a Cartesian product. Properly indexed foreign keys make join execution fast.'],
+      ['graphql', 'GraphQL schemas define types, queries, mutations, and subscriptions. Resolvers fetch data per field. DataLoader batches and caches resolver calls to prevent the N+1 problem.'],
+      ['perf-test', 'Performance testing includes load tests (sustained traffic), stress tests (beyond capacity), and spike tests (sudden bursts). Track p50/p90/p99 latency and error rates as primary signals.'],
+      ['async-errors', 'Handle async errors with try/catch around await expressions. Unhandled promise rejections crash Node.js processes. Use process.on(unhandledRejection) as a safety net alongside structured error boundaries.'],
+      ['unit-testing', 'Unit tests verify individual functions in isolation using mocks for external dependencies. Aim for fast, deterministic tests. Test behaviour, not implementation details, to survive refactors.'],
+      ['cicd', 'CI/CD pipelines automate build, test, and deploy steps on every commit. Cache dependencies between runs, parallelise test shards, and gate merges on passing checks and coverage thresholds.'],
+      ['caching', 'Cache aside reads from cache first and falls back to the database on a miss. Write-through updates cache and storage together. Set TTLs proportional to data staleness tolerance.'],
+      ['websocket', 'WebSockets provide full-duplex communication over a single TCP connection. The server pushes events without polling. Use heartbeat pings to detect stale connections and reconnect automatically.'],
+      ['code-review', 'Effective code reviews focus on correctness, security, and maintainability. Keep pull requests small (< 400 lines). Automate style checks so reviewers focus on logic, not formatting.'],
+    ];
+    for (const [name, body] of topics) {
+      fs.writeFileSync(path.join(fixturesDir, `${name}.md`), `# ${name}\n\n${body}\n`, 'utf-8');
+    }
+
+    // ── 2. Create context and load docs ──────────────────────────────────────
+    const ctx = await Context.create({ vectorsDir: path.join(benchDir, 'store') });
+    await ctx.load('bench', path.join(fixturesDir, '*.md'));
+
+    // ── 3. Warm up (first query always slower due to JIT / cache cold-start) ─
+    await ctx.query('warmup query', { library: 'bench', topK: 3, rerank: false });
+
+    // ── 4. Measure: embed-only time ──────────────────────────────────────────
+    const embedder = new Embedder();
+    const embedTimes: number[] = [];
+    for (const q of BENCH_QUERIES) {
+      const t0 = performance.now();
+      await embedder.embed(q);
+      embedTimes.push(performance.now() - t0);
+    }
+    embedTimes.sort((a, b) => a - b);
+
+    // ── 5. Measure: vector-only query (embed + ANN search) ───────────────────
+    const vectorTimes: number[] = [];
+    for (const q of BENCH_QUERIES) {
+      const t0 = performance.now();
+      await ctx.query(q, { library: 'bench', topK: 5, mode: 'vector', rerank: false });
+      vectorTimes.push(performance.now() - t0);
+    }
+    vectorTimes.sort((a, b) => a - b);
+
+    // ── 6. Measure: hybrid query (embed + ANN + FTS + RRF) ───────────────────
+    const hybridTimes: number[] = [];
+    for (const q of BENCH_QUERIES) {
+      const t0 = performance.now();
+      await ctx.query(q, { library: 'bench', topK: 5, mode: 'hybrid', rerank: false });
+      hybridTimes.push(performance.now() - t0);
+    }
+    hybridTimes.sort((a, b) => a - b);
+
+    // ── 7. Measure: hybrid + rerank ───────────────────────────────────────────
+    const rerankTimes: number[] = [];
+    for (const q of BENCH_QUERIES) {
+      const t0 = performance.now();
+      await ctx.query(q, { library: 'bench', topK: 5, mode: 'hybrid' });
+      rerankTimes.push(performance.now() - t0);
+    }
+    rerankTimes.sort((a, b) => a - b);
+
+    await ctx.close();
+
+    // ── 8. Derive search-only time (hybrid total minus embed) ─────────────────
+    const searchOnlyMean = mean(hybridTimes) - mean(embedTimes);
+
+    // ── 9. Print results ──────────────────────────────────────────────────────
+    const N = BENCH_QUERIES.length;
+    console.log(`\n╔${'═'.repeat(66)}╗`);
+    console.log(`║${'  Query Latency Benchmark  (n=' + N + ' queries, 20 docs)'.padEnd(66)}║`);
+    console.log(`╠${'═'.repeat(14)}╦${'═'.repeat(12)}╦${'═'.repeat(12)}╦${'═'.repeat(12)}╦${'═'.repeat(12)}╣`);
+    console.log(`║ ${'Stage'.padEnd(13)}║ ${'mean'.padEnd(11)}║ ${'p50'.padEnd(11)}║ ${'p90'.padEnd(11)}║ ${'p99'.padEnd(11)}║`);
+    console.log(`╠${'═'.repeat(14)}╬${'═'.repeat(12)}╬${'═'.repeat(12)}╬${'═'.repeat(12)}╬${'═'.repeat(12)}╣`);
+
+    const rows: [string, number[]][] = [
+      ['embed only', embedTimes],
+      ['vector query', vectorTimes],
+      ['hybrid query', hybridTimes],
+      ['hybrid+rerank', rerankTimes],
+    ];
+    for (const [label, times] of rows) {
+      console.log(
+        `║ ${label.padEnd(13)}║ ${fmtMs(mean(times)).padEnd(11)}║ ${fmtMs(percentile(times, 50)).padEnd(11)}║ ${fmtMs(percentile(times, 90)).padEnd(11)}║ ${fmtMs(percentile(times, 99)).padEnd(11)}║`,
+      );
+    }
+
+    console.log(`╠${'═'.repeat(14)}╩${'═'.repeat(12)}╩${'═'.repeat(12)}╩${'═'.repeat(12)}╩${'═'.repeat(12)}╣`);
+    console.log(`║ ${'search overhead (hybrid mean − embed mean): ' + fmtMs(searchOnlyMean) + '  QPS: ' + (1000 / mean(hybridTimes)).toFixed(1)}`.padEnd(67) + '║');
+    console.log(`╚${'═'.repeat(66)}╝`);
+
+    // ── 10. Assertions ────────────────────────────────────────────────────────
+    // Embed p99 < 1 s (model is loaded; subsequent calls are inference-only)
+    expect(percentile(embedTimes, 99)).toBeLessThan(1000);
+    // Vector query p99 < 1.5 s
+    expect(percentile(vectorTimes, 99)).toBeLessThan(1500);
+    // Hybrid query p99 < 2 s
+    expect(percentile(hybridTimes, 99)).toBeLessThan(2000);
+  }, 120_000 /* 2 min — embeds 20 queries × 4 passes */);
 });
