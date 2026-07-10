@@ -46,7 +46,7 @@ export class Context {
 
     const vectorsDir = options.vectorsDir ?? '.context/vectors';
 
-    if (!fs.existsSync(vectorsDir)) {
+    if (!options.readOnly && !fs.existsSync(vectorsDir)) {
       fs.mkdirSync(vectorsDir, { recursive: true });
     }
 
@@ -54,6 +54,10 @@ export class Context {
   }
 
   async load(library: string, pattern: string | string[]): Promise<void> {
+    if (this.options.readOnly) {
+      throw new Error(`Cannot load docs into library "${library}" in read-only mode`);
+    }
+
     const patterns = Array.isArray(pattern) ? pattern : [pattern];
     const files = await glob(patterns, { absolute: true });
 

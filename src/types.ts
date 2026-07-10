@@ -49,6 +49,16 @@ export interface ContextOptions {
    */
   vectorsDir?: string;
   /**
+   * Open existing vector files without creating or mutating zvec stores.
+   *
+   * When enabled, `query()` can read from existing `${library}.zvec` files,
+   * while `load()` and any write path will throw. Missing zvec files are
+   * reported as errors instead of being created.
+   *
+   * Defaults to `false`.
+   */
+  readOnly?: boolean;
+  /**
    * Base path for resolving document IDs.
    *
    * When set, file paths are resolved relative to this directory before

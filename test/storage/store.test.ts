@@ -43,6 +43,13 @@ describe('Store', () => {
       const zvec2 = store.acquireZvec('test-lib', 'jieba');
       expect(zvec1).toBe(zvec2);
     });
+
+    it('should not create missing zvec in read-only mode', () => {
+      const readOnlyStore = new Store(testDir, embedder, { readOnly: true });
+      expect(() => readOnlyStore.acquireZvec('missing-lib', 'jieba')).toThrow(/read-only mode/);
+      expect(fs.existsSync(path.join(testDir, 'missing-lib.zvec'))).toBe(false);
+      readOnlyStore.close();
+    });
   });
 
   describe('addDoc', () => {
@@ -59,6 +66,12 @@ describe('Store', () => {
 
     it('should not throw for empty docs array', () => {
       expect(() => store.addDoc('test-lib', [])).not.toThrow();
+    });
+
+    it('should reject writes in read-only mode', () => {
+      const readOnlyStore = new Store(testDir, embedder, { readOnly: true });
+      expect(() => readOnlyStore.addDoc('test-lib', [])).toThrow(/read-only mode/);
+      readOnlyStore.close();
     });
   });
 

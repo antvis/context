@@ -43,6 +43,10 @@ export class Store {
     if (fs.existsSync(filePath)) {
       collection = ZVecOpen(filePath);
     } else {
+      if (this.options?.readOnly) {
+        throw new Error(`Cannot open zvec for library "${library}" in read-only mode: ${filePath} does not exist`);
+      }
+
       const schema = buildZvecSchema(this.embedder.dimensions, tokenizerName);
       collection = ZVecCreateAndOpen(filePath, schema);
     }
@@ -53,6 +57,10 @@ export class Store {
 
   /** Insert docs (upsert semantics). */
   addDoc(library: string, docs: ZvecDoc[]): void {
+    if (this.options?.readOnly) {
+      throw new Error(`Cannot add docs to library "${library}" in read-only mode`);
+    }
+
     const collection = this.acquireZvec(library);
     if (docs.length === 0) return;
 
