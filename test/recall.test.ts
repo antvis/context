@@ -335,7 +335,7 @@ describe('Query Recall Performance', () => {
     expect(optimized.recallAt1).toBeGreaterThanOrEqual(baseline.recallAt1 - 0.05);
     expect(optimized.recallAt3).toBeGreaterThanOrEqual(baseline.recallAt3 - 0.05);
     expect(optimized.recallAt5).toBeGreaterThanOrEqual(baseline.recallAt5 - 0.05);
-  }, 120_000 /* 2 min — embedding 20 docs × 2 configs */);
+  }, 120_000 /* 2 min — embedding 10 docs × 2 configs */);
 
   it('numCandidatesMultiplier=4 is the new default', async () => {
     const defaultDir = path.join(TEST_BASE, 'default-check');
@@ -378,5 +378,5 @@ describe('Query Recall Performance', () => {
     await ctx.close();
 
     fs.rmSync(weightDir, { recursive: true, force: true });
-  }, 60_000);
+  }, 60_000 /* 1 min — embedding 10 docs */);
 });
