@@ -57,6 +57,7 @@ await ctx.close();
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `vectorsDir` | `string` | `.context/vectors` | Directory to store vector files |
+| `readOnly` | `boolean` | `false` | Open existing `.zvec` files only. In read-only mode, missing libraries are not created and `load()` writes throw. |
 | `basePath` | `string` | `process.cwd()` | Base path for resolving document IDs. Set for cross-machine consistent IDs. |
 | `onProgress` | `(phase, detail) => void` | — | Progress callback for `load()` phases: `'load'` → `'embed'` → `'insert'`. |
 | queryExpansion | QueryExpansionOptions | false | false  | Query expansion with user-provided synonym map. false disables. Without synonyms, expansion is a no-op. |
@@ -97,6 +98,21 @@ const ctxNoExpand = await Context.create({
   queryExpansion: false,
 });
 ```
+
+#### Read-only zvec Example
+
+Use `readOnly: true` when `.zvec` files are prepared elsewhere and the current process should only query them:
+
+```typescript
+const ctx = await Context.create({
+  vectorsDir: '.context/vectors',
+  readOnly: true,
+});
+
+const results = await ctx.query('How to configure a line chart', { library: 'g2' });
+```
+
+In read-only mode, `Context` opens existing `${library}.zvec` files with `ZVecOpen`. It does not create missing stores, and `load()` will throw because it would mutate the zvec file.
 
 ### `ctx.load(library, pattern)`
 

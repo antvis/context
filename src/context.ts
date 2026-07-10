@@ -33,6 +33,7 @@ export class Context {
     this.options = {
       basePath: process.cwd(),
       vectorsDir: '.context/vectors',
+      readOnly: false,
       ...options,
     };
     this.embedder = embedder;

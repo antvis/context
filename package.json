@@ -1,6 +1,6 @@
 {
   "name": "@antv/context",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A local context retrieval library that enables semantic search over your documentation. It loads documents (Markdown, JSON, Text), vectorizes them using [Transformers.js](https://huggingface.co/transformers.js), and stores vectors locally in `.zvec` files for fast semantic querying. ",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

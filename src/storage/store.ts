@@ -23,13 +23,16 @@ const FTS_FIELDS = ['content'];
 export class Store {
   private vectorsDir: string;
   private embedder: Embedder;
-  private options?: ContextOptions;
+  private options: ContextOptions;
   private zvecs: Map<string, ZVecCollection> = new Map();
 
   constructor(vectorsDir: string, embedder: Embedder, options?: ContextOptions) {
     this.vectorsDir = vectorsDir;
     this.embedder = embedder;
-    this.options = options;
+    this.options = {
+      readOnly: false,
+      ...options,
+    };
   }
 
   /** Get or create zvec instance. tokenizerName configures tokenizer on first creation. */
@@ -41,10 +44,10 @@ export class Store {
     let collection: ZVecCollection;
 
     if (fs.existsSync(filePath)) {
-      collection = ZVecOpen(filePath);
+      collection = ZVecOpen(filePath, { readOnly: this.options.readOnly });
     } else {
       const schema = buildZvecSchema(this.embedder.dimensions, tokenizerName);
-      collection = ZVecCreateAndOpen(filePath, schema);
+      collection = ZVecCreateAndOpen(filePath, schema, { readOnly: this.options.readOnly });
     }
 
     this.zvecs.set(library, collection);
